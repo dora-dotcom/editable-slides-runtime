@@ -49,3 +49,46 @@ The editable runtime requires this DOM contract:
 ## Automation
 
 `scripts/port_to_editable.py` automates steps 3–4 (runtime injection + chrome scaffolding). Step 2 (semantic markup restructure) is currently manual since it requires judgment about what's a movable object vs static chrome.
+
+## Pitfalls (learned the hard way)
+
+### 1. Never write literal `</script>` inside a `<script>` block
+
+The HTML parser runs **before** the JS parser. Any `</script>` text inside a script tag — even inside a JS comment or string — closes the script tag prematurely. The rest of your JS becomes plain HTML text and never executes.
+
+❌ This silently breaks the entire runtime:
+```html
+<script>
+// Drop-in: wrap inside <script>...</script> before </body>
+(function () { /* never runs */ })();
+</script>
+```
+
+✓ Use an escape, alternate wording, or string concatenation:
+```js
+// Drop-in: wrap inside <\/script>-balanced tags
+// Drop-in: paste inside a script tag before </body>
+'<' + '/script>'    // when you must produce the literal in a string
+```
+
+This bit us in the initial extraction of `runtime/runtime.js` — the helpful header comment killed the runtime in every ported template until we removed the literal closing tag from the comment.
+
+### 2. Don't append code outside the runtime IIFE
+
+`runtime/runtime.js` is a complete self-contained IIFE: `(function () { ... })();`. Its `deck`, `editor`, `sidebar`, `history` etc. are local to that closure. **Do not append code after the closing `})();`** that references them — it will be a `ReferenceError` at runtime.
+
+Equally, **do not duplicate sections** of the runtime by manually re-pasting "// Startup self-check" or similar markers around your build template — it produces unmatched IIFE closes (`Unexpected token '}'`) that break parsing.
+
+Recommended assembly pattern (used by `scripts/port_to_editable.py` and the bold-poster build):
+
+```python
+html = f"""
+...
+<script>
+{runtime_js}        # the entire IIFE, completely unchanged
+</script>
+</body>
+"""
+```
+
+If you need an external hook (e.g., custom analytics on slide change), put it BEFORE the runtime `<script>` block in a separate `<script>` tag, or expose it from inside the IIFE via `window.deckHooks = {...}` and call it from outside afterward.
