@@ -1039,7 +1039,7 @@
     style.id = 'deck-print-override';
     style.textContent = [
       '@page{size:' + PW + 'px ' + PH + 'px;margin:0}',
-      '*,*::before,*::after{animation:none!important;transition:none!important}',
+      '*,*::before,*::after{animation:none!important;transition:none!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}',
       'html{scroll-snap-type:none!important;scroll-behavior:auto!important}',
       'html,body{width:' + PW + 'px!important;height:auto!important;overflow:visible!important;background:#000!important}',
       '.slides-offset{display:block!important;width:' + PW + 'px!important}',
