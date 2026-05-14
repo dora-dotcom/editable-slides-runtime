@@ -760,7 +760,7 @@ body.deck-edit-mode .slide-bg-replace-anchor { display: block; }
 
 <script>
 // Editable deck runtime — extracted from frontend-slides-editable/examples/editable-deck-reference.html
-// Lines 535-1938. Drop-in: wrap in <script>...</script> before </body>.
+// Lines 535-1938. Drop-in: paste inside a script tag before </body>.
 
 (function () {
   'use strict';
@@ -2167,11 +2167,6 @@ body.deck-edit-mode .slide-bg-replace-anchor { display: block; }
     .forEach((id) => console.error('[deck-runtime] Missing required element: #' + id));
 })();
 
-
-// Startup self-check
-(['editToggle','pagesToggle','deckEditChrome','btnExport','btnExportPdf','rteToolbar','filmstripList'])
-  .filter((id) => !document.getElementById(id))
-  .forEach((id) => console.error('[deck-runtime] Missing required element: #' + id));
 </script>
 </body>
 </html>

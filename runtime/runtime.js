@@ -1,5 +1,5 @@
 // Editable deck runtime — extracted from frontend-slides-editable/examples/editable-deck-reference.html
-// Lines 535-1938. Drop-in: wrap in <script>...</script> before </body>.
+// Lines 535-1938. Drop-in: paste inside a script tag before </body>.
 
 (function () {
   'use strict';
