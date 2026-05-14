@@ -1,0 +1,1407 @@
+// Editable deck runtime — extracted from frontend-slides-editable/examples/editable-deck-reference.html
+// Lines 535-1938. Drop-in: wrap in <script>...</script> before </body>.
+
+(function () {
+  'use strict';
+
+  const STORAGE_KEY = 'editable-deck:' + (document.documentElement.getAttribute('data-deck-id') || 'default');
+  const SNAP_PX = 8;
+  const MAX_HISTORY = 60;
+  const RESIZE_MIN_FRAC = 0.05;
+
+  function prefersReducedMotion() {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  function isDeckChromeNode(node) {
+    if (!node || !node.closest) return false;
+    return !!(node.closest('#deckEditChrome') || node.closest('#rteToolbar') || node.closest('#slideSidebar') ||
+      node.closest('.deck-edit-chrome') || node.closest('[data-deck-chrome-surface]'));
+  }
+
+  /* ---------- History ---------- */
+  class HistoryStack {
+    constructor(onChange) {
+      this._u = [];
+      this._r = [];
+      this._onChange = typeof onChange === 'function' ? onChange : function () {};
+    }
+    push(record) {
+      this._u.push(record);
+      if (this._u.length > MAX_HISTORY) this._u.shift();
+      this._r.length = 0;
+      this._onChange();
+    }
+    undo() {
+      const r = this._u.pop();
+      if (r && r.undo) r.undo();
+      if (r) this._r.push(r);
+      this._onChange();
+    }
+    redo() {
+      const r = this._r.pop();
+      if (r && r.redo) r.redo();
+      if (r) this._u.push(r);
+      this._onChange();
+    }
+    canUndo() { return this._u.length > 0; }
+    canRedo() { return this._r.length > 0; }
+  }
+
+  /* ---------- Slide deck (scroll / nav) ---------- */
+  class SlideDeck {
+    constructor() {
+      this.slidesContainer = document.body;
+      this.refreshSlides();
+      this.current = 0;
+      this.onSlideChange = null;
+      this._obs = new IntersectionObserver(
+        (ents) => {
+          ents.forEach((en) => {
+            if (en.isIntersecting) en.target.classList.add('visible');
+          });
+        },
+        { threshold: 0.35 }
+      );
+      this.slides.forEach((s) => this._obs.observe(s));
+      this._onScroll = () => this._syncCurrentFromScroll();
+      window.addEventListener('scroll', this._onScroll, { passive: true });
+      this._keys = this._keys.bind(this);
+      window.addEventListener('keydown', this._keys);
+      this._wheel = this._wheel.bind(this);
+      window.addEventListener('wheel', this._wheel, { passive: false });
+      this._syncCurrentFromScroll();
+    }
+    refreshSlides() {
+      const root = document.querySelector('.slides-offset');
+      this.slides = root
+        ? Array.from(root.querySelectorAll(':scope > section.slide'))
+        : [];
+    }
+    _syncCurrentFromScroll() {
+      const h = window.innerHeight;
+      let best = 0, bestRatio = 0;
+      this.slides.forEach((s, i) => {
+        const r = s.getBoundingClientRect();
+        const vis = Math.max(0, Math.min(r.bottom, h) - Math.max(r.top, 0)) / h;
+        if (vis > bestRatio) { bestRatio = vis; best = i; }
+      });
+      if (best !== this.current) {
+        this.current = best;
+        this.onSlideChange && this.onSlideChange(best);
+      }
+      this._updateChrome();
+    }
+    goTo(i) {
+      this.refreshSlides();
+      i = Math.max(0, Math.min(this.slides.length - 1, i));
+      this.slides[i].scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+      this.current = i;
+      this._updateChrome();
+      this.onSlideChange && this.onSlideChange(i);
+    }
+    _updateChrome() {
+      const n = this.slides.length;
+      const p = n ? ((this.current + 1) / n) * 100 : 0;
+      const bar = document.getElementById('progressBar');
+      if (bar) bar.style.width = p + '%';
+      const dots = document.getElementById('navDots');
+      if (dots) {
+        dots.innerHTML = '';
+        for (let i = 0; i < n; i++) {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.setAttribute('aria-label', 'Go to slide ' + (i + 1));
+          if (i === this.current) b.classList.add('active');
+          b.addEventListener('click', () => this.goTo(i));
+          dots.appendChild(b);
+        }
+      }
+    }
+    _keys(e) {
+      if (document.body.classList.contains('deck-edit-mode')) {
+        if (e.target.closest('.slide-object-text[contenteditable="true"]')) return;
+        if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') {
+          e.preventDefault(); this.goTo(this.current + 1);
+        } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+          e.preventDefault(); this.goTo(this.current - 1);
+        }
+      } else {
+        if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') {
+          e.preventDefault(); this.goTo(this.current + 1);
+        } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+          e.preventDefault(); this.goTo(this.current - 1);
+        }
+      }
+    }
+    _wheel(e) {
+      if (document.body.classList.contains('deck-edit-mode')) return;
+      if (Math.abs(e.deltaY) < 8) return;
+      e.preventDefault();
+      if (e.deltaY > 0) this.goTo(this.current + 1);
+      else this.goTo(this.current - 1);
+    }
+  }
+
+  function ensureResizeHandles(root) {
+    const el = root || document;
+    el.querySelectorAll('[data-slide-object]').forEach((obj) => {
+      if (obj.querySelector('.slide-object-resize')) return;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'slide-object-resize';
+      btn.setAttribute('aria-label', 'Resize');
+      obj.appendChild(btn);
+    });
+  }
+
+  /* ---------- Editor: select, drag, resize, snap, RTE ---------- */
+  class SlideObjectEditor {
+    constructor(deck, history) {
+      this.deck = deck;
+      this.history = history;
+      this.active = false;
+      this.selected = new Set();
+      this._dragState = null;
+      this._resizeState = null;
+      this._snapEls = [];
+
+      this.toolbar = document.getElementById('rteToolbar');
+      this._onDocPointerDown = this._onDocPointerDown.bind(this);
+      this._onDocPointerMove = this._onDocPointerMove.bind(this);
+      this._onDocPointerUp = this._onDocPointerUp.bind(this);
+      this._onResizeMove = this._onResizeMove.bind(this);
+      this._onResizeUp = this._onResizeUp.bind(this);
+      this._onSelectionChange = this._onSelectionChange.bind(this);
+      this._onFocusIn = this._onFocusIn.bind(this);
+    }
+    setActive(on) {
+      this.active = !!on;
+      document.body.classList.toggle('deck-edit-mode', on);
+      document.body.classList.toggle('slide-anim-paused', on);
+      if (on) {
+        ensureResizeHandles(document);
+      } else {
+        this.clearSelection();
+        this.toolbar.classList.remove('visible');
+        document.querySelectorAll('.slide-object-text[contenteditable="true"]').forEach((el) => {
+          el.contentEditable = 'false';
+        });
+      }
+    }
+    toggle() { this.setActive(!this.active); }
+
+    clearSelection() {
+      this.selected.forEach((el) => el.classList.remove('is-selected'));
+      this.selected.clear();
+    }
+    _addSel(el) {
+      el.classList.add('is-selected');
+      this.selected.add(el);
+    }
+    _toggleSel(el) {
+      if (this.selected.has(el)) {
+        el.classList.remove('is-selected');
+        this.selected.delete(el);
+      } else this._addSel(el);
+    }
+    _selectOnly(el) {
+      this.clearSelection();
+      this._addSel(el);
+    }
+
+    _closestObject(t) {
+      return t && t.closest && t.closest('[data-slide-object]');
+    }
+
+    _onDocPointerDown(e) {
+      if (!this.active) return;
+      if (isDeckChromeNode(e.target)) return;
+
+      const obj = this._closestObject(e.target);
+      const slide = e.target.closest && e.target.closest('section.slide');
+
+      if (obj && e.ctrlKey) {
+        e.preventDefault();
+        this._toggleSel(obj);
+        return;
+      }
+
+      if (obj && !e.ctrlKey) {
+        const onResize = e.target.closest('.slide-object-resize');
+        if (onResize) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!this.selected.has(obj)) this._selectOnly(obj);
+          if (this.selected.size === 1) this._startResize(e, obj);
+          return;
+        }
+
+        const isText = obj.getAttribute('data-object-type') === 'text';
+        const onMove = e.target.closest('.slide-object-move');
+        const onText = e.target.closest('.slide-object-text');
+
+        if (isText && onText && !onMove) {
+          this._selectOnly(obj);
+          const te = obj.querySelector('.slide-object-text');
+          if (te) {
+            if (te.dataset._deckHtmlBefore === undefined) te.dataset._deckHtmlBefore = te.innerHTML;
+            te.contentEditable = 'true';
+            te.focus();
+            this._updateRteToolbar();
+          }
+          return;
+        }
+
+        if (!this.selected.has(obj)) this._selectOnly(obj);
+
+        if (onMove || !isText) {
+          e.preventDefault();
+          this._startDrag(e, obj);
+        }
+        return;
+      }
+
+      if (slide && !obj) {
+        this.clearSelection();
+        document.querySelectorAll('.slide-object-text[contenteditable="true"]').forEach((el) => {
+          el.contentEditable = 'false';
+        });
+        this.toolbar.classList.remove('visible');
+      }
+    }
+
+    _parsePct(el, prop) {
+      const v = getComputedStyle(el)[prop];
+      if (v.endsWith('%')) return parseFloat(v) || 0;
+      return null;
+    }
+
+    /**
+     * Resolved % of slide for left/top. Browsers report computed left/top in px — using that
+     * with ?? 0 caused objects to jump to (0,0) on drag start.
+     */
+    _positionPct(el, slide, axis) {
+      const prop = axis === 'left' ? 'left' : 'top';
+      const raw = el.style && el.style[prop] ? String(el.style[prop]).trim() : '';
+      if (raw.endsWith('%')) {
+        const p = parseFloat(raw);
+        return Number.isFinite(p) ? p : 0;
+      }
+      const sr = this._slideRect(slide);
+      const r = el.getBoundingClientRect();
+      if (axis === 'left') {
+        return ((r.left - sr.left) / sr.width) * 100;
+      }
+      return ((r.top - sr.top) / sr.height) * 100;
+    }
+
+    _setPct(el, leftPct, topPct) {
+      el.style.left = leftPct + '%';
+      el.style.top = topPct + '%';
+    }
+
+    _slideRect(slide) {
+      return slide.getBoundingClientRect();
+    }
+
+    _startDrag(e, primary) {
+      const slide = primary.closest('section.slide');
+      if (!slide) return;
+      const sr = this._slideRect(slide);
+      const moving = Array.from(this.selected).filter((o) => slide.contains(o));
+      if (!moving.length) moving.push(primary);
+
+      const starts = moving.map((o) => ({
+        el: o,
+        l: this._positionPct(o, slide, 'left'),
+        t: this._positionPct(o, slide, 'top'),
+        w: o.offsetWidth,
+        h: o.offsetHeight
+      }));
+
+      this._dragState = {
+        slide,
+        sr,
+        moving: starts,
+        startX: e.clientX,
+        startY: e.clientY,
+        primary: primary
+      };
+      this._clearSnap();
+
+      document.addEventListener('pointermove', this._onDocPointerMove);
+      document.addEventListener('pointerup', this._onDocPointerUp);
+      document.addEventListener('pointercancel', this._onDocPointerUp);
+      try { e.target.setPointerCapture(e.pointerId); } catch (_) {}
+    }
+
+    _startResize(e, obj) {
+      const slide = obj.closest('section.slide');
+      if (!slide) return;
+      const sr = this._slideRect(slide);
+      const r = obj.getBoundingClientRect();
+      const wPct = this._parsePct(obj, 'width');
+      const hPct = this._parsePct(obj, 'height');
+      this._resizeState = {
+        slide,
+        el: obj,
+        sr,
+        startX: e.clientX,
+        startY: e.clientY,
+        startW: r.width,
+        startH: r.height,
+        beforeW: obj.style.width,
+        beforeH: obj.style.height,
+        hadWidthPct: wPct != null,
+        hadHeightPct: hPct != null
+      };
+      document.addEventListener('pointermove', this._onResizeMove);
+      document.addEventListener('pointerup', this._onResizeUp);
+      document.addEventListener('pointercancel', this._onResizeUp);
+      try { e.target.setPointerCapture(e.pointerId); } catch (_) {}
+    }
+
+    _onResizeMove(e) {
+      if (!this._resizeState) return;
+      const st = this._resizeState;
+      const sr = st.sr;
+      const dx = e.clientX - st.startX;
+      const dy = e.clientY - st.startY;
+      const minPx = Math.min(sr.width, sr.height) * RESIZE_MIN_FRAC;
+      let nw = Math.max(minPx, st.startW + dx);
+      let nh = Math.max(minPx, st.startH + dy);
+      st.el.style.width = (nw / sr.width * 100) + '%';
+      st.el.style.height = (nh / sr.height * 100) + '%';
+    }
+
+    _onResizeUp() {
+      if (!this._resizeState) return;
+      const st = this._resizeState;
+      const el = st.el;
+      const afterW = el.style.width;
+      const afterH = el.style.height;
+      const beforeW = st.beforeW;
+      const beforeH = st.beforeH;
+      const changed = afterW !== beforeW || afterH !== beforeH;
+      if (changed) {
+        this.history.push({
+          undo: () => {
+            el.style.width = beforeW;
+            el.style.height = beforeH;
+          },
+          redo: () => {
+            el.style.width = afterW;
+            el.style.height = afterH;
+          }
+        });
+      }
+      this._resizeState = null;
+      document.removeEventListener('pointermove', this._onResizeMove);
+      document.removeEventListener('pointerup', this._onResizeUp);
+      document.removeEventListener('pointercancel', this._onResizeUp);
+    }
+
+    _otherObjects(slide, excludeSet) {
+      return Array.from(slide.querySelectorAll('[data-slide-object]')).filter((o) => !excludeSet.has(o));
+    }
+
+    /* Slide edge snap lines removed — only center guides + other objects (plan A). */
+    _snapLinesForSlide(slide, excludeSet) {
+      const sr = this._slideRect(slide);
+      const linesV = [sr.width / 2];
+      const linesH = [sr.height / 2];
+      this._otherObjects(slide, excludeSet).forEach((o) => {
+        const r = o.getBoundingClientRect();
+        const left = r.left - sr.left;
+        const top = r.top - sr.top;
+        linesV.push(left, left + r.width / 2, left + r.width);
+        linesH.push(top, top + r.height / 2, top + r.height);
+      });
+      return { linesV, linesH, sr };
+    }
+
+    _applySnap(dx, dy, primaryStart, state) {
+      if (prefersReducedMotion()) {
+        return { dx, dy, lv: null, lh: null };
+      }
+      const { slide, moving, sr } = state;
+      const exclude = new Set(moving.map((m) => m.el));
+      const snap = this._snapLinesForSlide(slide, exclude);
+      const pw = primaryStart.w;
+      const ph = primaryStart.h;
+      let pl = (primaryStart.l / 100) * sr.width + dx;
+      let pt = (primaryStart.t / 100) * sr.height + dy;
+
+      let bestVX = null, bestVd = SNAP_PX + 1;
+      snap.linesV.forEach((xv) => {
+        [pl, pl + pw / 2, pl + pw].forEach((edge) => {
+          const d = xv - edge;
+          if (Math.abs(d) < bestVd) { bestVd = Math.abs(d); bestVX = xv - edge; }
+        });
+      });
+      let bestHY = null, bestHd = SNAP_PX + 1;
+      snap.linesH.forEach((yh) => {
+        [pt, pt + ph / 2, pt + ph].forEach((edge) => {
+          const d = yh - edge;
+          if (Math.abs(d) < bestHd) { bestHd = Math.abs(d); bestHY = yh - edge; }
+        });
+      });
+
+      let ndx = dx, ndy = dy;
+      if (bestVX !== null && bestVd <= SNAP_PX) ndx += bestVX;
+      if (bestHY !== null && bestHd <= SNAP_PX) ndy += bestHY;
+
+      let lv = null, lh = null;
+      if (bestVX !== null && bestVd <= SNAP_PX) {
+        const nx = pl + ndx - dx;
+        lv = { pos: nx + pw / 2 };
+      }
+      if (bestHY !== null && bestHd <= SNAP_PX) {
+        const ny = pt + ndy - dy;
+        lh = { pos: ny + ph / 2 };
+      }
+      return { dx: ndx, dy: ndy, lv, lh, sr };
+    }
+
+    _showSnap(lv, lh, sr, slide) {
+      this._clearSnap();
+      const layer = slide.querySelector('.slide-edit-layer');
+      if (!layer) return;
+      if (lv) {
+        const d = document.createElement('div');
+        d.className = 'snap-line-v';
+        d.style.left = (lv.pos / sr.width * 100) + '%';
+        layer.appendChild(d);
+        this._snapEls.push(d);
+      }
+      if (lh) {
+        const d = document.createElement('div');
+        d.className = 'snap-line-h';
+        d.style.top = (lh.pos / sr.height * 100) + '%';
+        layer.appendChild(d);
+        this._snapEls.push(d);
+      }
+    }
+    _clearSnap() {
+      this._snapEls.forEach((e) => e.remove());
+      this._snapEls = [];
+    }
+
+    _onDocPointerMove(e) {
+      if (!this._dragState) return;
+      const st = this._dragState;
+      const sr = st.sr;
+      let dx = e.clientX - st.startX;
+      let dy = e.clientY - st.startY;
+
+      const primaryStart = st.moving.find((m) => m.el === st.primary) || st.moving[0];
+      const snapped = this._applySnap(dx, dy, primaryStart, st);
+      dx = snapped.dx;
+      dy = snapped.dy;
+
+      st.moving.forEach((m) => {
+        const nl = m.l + (dx / sr.width) * 100;
+        const nt = m.t + (dy / sr.height) * 100;
+        const maxL = 100 - (m.w / sr.width) * 100;
+        const maxT = 100 - (m.h / sr.height) * 100;
+        this._setPct(m.el, Math.max(0, Math.min(maxL, nl)), Math.max(0, Math.min(maxT, nt)));
+      });
+
+      if (snapped.lv || snapped.lh) this._showSnap(snapped.lv, snapped.lh, sr, st.slide);
+      else this._clearSnap();
+    }
+
+    _onDocPointerUp() {
+      if (!this._dragState) return;
+      const st = this._dragState;
+      const after = st.moving.map((m) => ({
+        el: m.el,
+        l: this._positionPct(m.el, st.slide, 'left'),
+        t: this._positionPct(m.el, st.slide, 'top')
+      }));
+      const before = st.moving.map((m) => ({ el: m.el, l: m.l, t: m.t }));
+
+      const changed = after.some((a, i) => a.l !== before[i].l || a.t !== before[i].t);
+      if (changed) {
+        this.history.push({
+          undo: () => {
+            before.forEach((b) => this._setPct(b.el, b.l, b.t));
+          },
+          redo: () => {
+            after.forEach((a) => this._setPct(a.el, a.l, a.t));
+          }
+        });
+      }
+
+      this._dragState = null;
+      this._clearSnap();
+      document.removeEventListener('pointermove', this._onDocPointerMove);
+      document.removeEventListener('pointerup', this._onDocPointerUp);
+      document.removeEventListener('pointercancel', this._onDocPointerUp);
+    }
+
+    _syncRteButtons() {
+      const boldBtn = this.toolbar.querySelector('button[data-cmd="bold"]');
+      try {
+        if (boldBtn) boldBtn.classList.toggle('is-active', document.queryCommandState('bold'));
+      } catch (_) {}
+      const italicBtn = this.toolbar.querySelector('button[data-cmd="italic"]');
+      try {
+        if (italicBtn) italicBtn.classList.toggle('is-active', document.queryCommandState('italic'));
+      } catch (_) {}
+    }
+
+    _activeTextEl() {
+      const el = document.activeElement;
+      if (el && el.classList && el.classList.contains('slide-object-text') && el.getAttribute('contenteditable') === 'true') {
+        return el;
+      }
+      const sel = document.getSelection();
+      if (!sel || !sel.rangeCount) return null;
+      const n = sel.anchorNode;
+      const p = n && (n.nodeType === 3 ? n.parentElement : n);
+      const active = p && p.closest && p.closest('.slide-object-text[contenteditable="true"]');
+      if (active) return active;
+      if (this.toolbar.contains(document.activeElement)) {
+        return document.querySelector('.slide-object-text[contenteditable="true"]');
+      }
+      return null;
+    }
+
+    _updateRteToolbar() {
+      if (!this.active) return;
+      const inside = this._activeTextEl();
+      if (!inside) {
+        this.toolbar.classList.remove('visible');
+        return;
+      }
+      const sel = document.getSelection();
+      let rr = inside.getBoundingClientRect();
+      if (sel && sel.rangeCount) {
+        const r = sel.getRangeAt(0).getBoundingClientRect();
+        if (r.width > 1 && r.height > 1) rr = r;
+      }
+      this.toolbar.classList.add('visible');
+      this.toolbar.style.left = Math.min(window.innerWidth - this.toolbar.offsetWidth - 8, Math.max(8, rr.left + window.scrollX)) + 'px';
+      this.toolbar.style.top = (rr.top + window.scrollY - this.toolbar.offsetHeight - 8) + 'px';
+      this._syncRteButtons();
+    }
+
+    _onFocusIn(e) {
+      if (!this.active) return;
+      const te = e.target.closest && e.target.closest('.slide-object-text[contenteditable="true"]');
+      if (te) this._updateRteToolbar();
+    }
+
+    _onSelectionChange() {
+      if (!this.active) return;
+      this._updateRteToolbar();
+    }
+
+    _applyInlineStyle(textEl, stylePatch) {
+      textEl.focus();
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return false;
+      const range = sel.getRangeAt(0);
+      if (!textEl.contains(range.commonAncestorContainer)) return false;
+
+      const span = document.createElement('span');
+      Object.keys(stylePatch).forEach((key) => {
+        span.style[key] = stylePatch[key];
+      });
+      if (range.collapsed) {
+        span.appendChild(document.createTextNode('\u200b'));
+        range.insertNode(span);
+        const nr = document.createRange();
+        nr.setStart(span.firstChild, 1);
+        nr.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(nr);
+        return true;
+      }
+
+      const contents = range.extractContents();
+      span.appendChild(contents);
+      range.insertNode(span);
+      const nr = document.createRange();
+      nr.selectNodeContents(span);
+      sel.removeAllRanges();
+      sel.addRange(nr);
+      return true;
+    }
+
+    _applyFontSizeFactor(textEl, fac) {
+      const fs = 'clamp(' + (0.7 * fac) + 'rem, ' + (1.2 * fac) + 'vw, ' + (1.4 * fac) + 'rem)';
+      return this._applyInlineStyle(textEl, { fontSize: fs });
+    }
+
+    _applyFontFamily(textEl, fontExpr) {
+      return this._applyInlineStyle(textEl, { fontFamily: fontExpr });
+    }
+
+    bind() {
+      document.addEventListener('pointerdown', this._onDocPointerDown, true);
+      document.addEventListener('focusin', this._onFocusIn, true);
+      document.addEventListener('selectionchange', this._onSelectionChange);
+      this.toolbar.querySelectorAll('button[data-cmd]').forEach((btn) => {
+        btn.addEventListener('mousedown', (ev) => ev.preventDefault());
+        btn.addEventListener('click', () => this._exec(btn.getAttribute('data-cmd')));
+      });
+      this.toolbar.querySelectorAll('button[data-size-step]').forEach((btn) => {
+        btn.addEventListener('mousedown', (ev) => ev.preventDefault());
+        btn.addEventListener('click', () => {
+          const step = parseInt(btn.getAttribute('data-size-step'), 10);
+          const textEl = this._activeTextEl();
+          if (!textEl) return;
+          const beforeStyle = textEl.style.fontSize;
+          const cur = parseFloat(getComputedStyle(textEl).fontSize) || 16;
+          textEl.style.fontSize = Math.max(8, cur + step) + 'px';
+          const afterStyle = textEl.style.fontSize;
+          if (beforeStyle !== afterStyle) {
+            this.history.push({
+              undo: () => { textEl.style.fontSize = beforeStyle; },
+              redo: () => { textEl.style.fontSize = afterStyle; }
+            });
+          }
+          this._updateRteToolbar();
+        });
+      });
+      this.toolbar.querySelectorAll('button[data-font]').forEach((btn) => {
+        btn.addEventListener('mousedown', (ev) => ev.preventDefault());
+        btn.addEventListener('click', () => {
+          const fontExpr = btn.getAttribute('data-font');
+          if (!fontExpr) return;
+          const textEl = this._activeTextEl();
+          if (!textEl) return;
+          const beforeHtml = textEl.innerHTML;
+          this._applyFontFamily(textEl, fontExpr);
+          const afterHtml = textEl.innerHTML;
+          if (beforeHtml !== afterHtml) {
+            this.history.push({
+              undo: () => { textEl.innerHTML = beforeHtml; },
+              redo: () => { textEl.innerHTML = afterHtml; }
+            });
+          }
+          this._updateRteToolbar();
+        });
+      });
+    }
+
+    _exec(cmd) {
+      const textEl = this._activeTextEl();
+      if (!textEl) return;
+      textEl.focus();
+      const before = textEl.innerHTML;
+      document.execCommand(cmd, false, null);
+      const after = textEl.innerHTML;
+      if (before !== after) {
+        this.history.push({
+          undo: () => { textEl.innerHTML = before; },
+          redo: () => { textEl.innerHTML = after; }
+        });
+      }
+      this._syncRteButtons();
+      this._updateRteToolbar();
+    }
+  }
+
+  /* ---------- Sidebar ---------- */
+  class SlideSidebar {
+    constructor(deck, history) {
+      this.deck = deck;
+      this.history = history;
+      this.list = document.getElementById('filmstripList');
+      this.open = false;
+      this._dragFilm = null;
+    }
+    setOpen(on) {
+      this.open = !!on;
+      document.body.classList.toggle('deck-sidebar-open', on);
+      document.getElementById('pagesToggle').classList.toggle('active', on);
+      if (on) this.refresh();
+    }
+    toggle() { this.setOpen(!this.open); }
+
+    refresh() {
+      this.list.innerHTML = '';
+      this.deck.refreshSlides();
+      this.deck.slides.forEach((slide, idx) => {
+        const item = document.createElement('div');
+        item.className = 'filmstrip-item';
+        item.dataset.slideIndex = String(idx);
+        if (idx === this.deck.current) item.classList.add('is-current');
+
+        const lineTop = document.createElement('div');
+        lineTop.className = 'filmstrip-drop-line filmstrip-drop-line-before';
+        const host = document.createElement('div');
+        host.className = 'filmstrip-thumb-host';
+        const lineBot = document.createElement('div');
+        lineBot.className = 'filmstrip-drop-line filmstrip-drop-line-after';
+
+        const actions = document.createElement('div');
+        actions.className = 'filmstrip-actions';
+        const num = document.createElement('span');
+        num.className = 'filmstrip-num';
+        num.textContent = 'Slide ' + (idx + 1);
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.textContent = 'Delete';
+        del.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          this._deleteSlide(idx);
+        });
+        actions.appendChild(num);
+        actions.appendChild(del);
+
+        item.appendChild(lineTop);
+        item.appendChild(host);
+        item.appendChild(lineBot);
+        item.appendChild(actions);
+
+        item.addEventListener('click', (ev) => {
+          if (ev.target.closest('button')) return;
+          this.deck.goTo(idx);
+          this.refresh();
+        });
+
+        this._fillThumb(slide, host);
+
+        item.addEventListener('pointerdown', (ev) => {
+          if (ev.target.closest('button')) return;
+          this._startFilmDrag(ev, item, idx);
+        });
+
+        this.list.appendChild(item);
+      });
+    }
+
+    _fillThumb(slideEl, host) {
+      host.innerHTML = '';
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden;border-radius:6px;';
+      const sc = document.createElement('div');
+      sc.style.cssText = 'position:absolute;left:0;top:0;transform-origin:0 0;';
+      const cl = slideEl.cloneNode(true);
+      cl.querySelectorAll('[id]').forEach((n) => n.removeAttribute('id'));
+      cl.querySelectorAll('script').forEach((n) => n.remove());
+      cl.querySelectorAll('[data-slide-object]').forEach((n) => {
+        n.removeAttribute('data-slide-object');
+        n.removeAttribute('data-oid');
+        n.removeAttribute('data-object-type');
+        n.classList.remove('is-selected');
+      });
+      cl.querySelectorAll('.slide-object-move, .slide-object-resize').forEach((n) => n.remove());
+      cl.querySelectorAll('[contenteditable]').forEach((n) => n.setAttribute('contenteditable', 'false'));
+      const w = slideEl.offsetWidth || window.innerWidth;
+      const h = slideEl.offsetHeight || window.innerHeight;
+      cl.style.width = w + 'px';
+      cl.style.height = h + 'px';
+      sc.appendChild(cl);
+      wrap.appendChild(sc);
+      host.appendChild(wrap);
+      requestAnimationFrame(() => {
+        const bw = host.clientWidth;
+        const bh = host.clientHeight;
+        const s = Math.min(bw / w, bh / h);
+        sc.style.transform = 'scale(' + s + ')';
+      });
+    }
+
+    _startFilmDrag(ev, item, fromIndex) {
+      if (ev.button !== 0) return;
+      ev.preventDefault();
+      item.classList.add('dragging');
+      this._dragFilm = { fromIndex, item, lastX: ev.clientX, lastY: ev.clientY, targetIndex: null, before: true };
+      const move = (e) => {
+        this._dragFilm.lastX = e.clientX;
+        this._dragFilm.lastY = e.clientY;
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        const target = el && el.closest && el.closest('.filmstrip-item');
+        this.list.querySelectorAll('.filmstrip-item').forEach((it) => {
+          it.classList.remove('drop-before', 'drop-after');
+        });
+        if (!target || target === item) return;
+        const r = target.getBoundingClientRect();
+        const before = e.clientY < r.top + r.height / 2;
+        target.classList.add(before ? 'drop-before' : 'drop-after');
+        this._dragFilm.targetIndex = parseInt(target.dataset.slideIndex, 10);
+        this._dragFilm.before = before;
+      };
+      const up = () => {
+        item.classList.remove('dragging');
+        this.list.querySelectorAll('.filmstrip-item').forEach((it) => {
+          it.classList.remove('drop-before', 'drop-after');
+        });
+        document.removeEventListener('pointermove', move);
+        document.removeEventListener('pointerup', up);
+        if (this._dragFilm) {
+          const { fromIndex, targetIndex, before } = this._dragFilm;
+          this._dragFilm = null;
+          if (targetIndex !== null && targetIndex !== undefined) {
+            this._reorderFilmstrip(fromIndex, targetIndex, before);
+          }
+        }
+      };
+      document.addEventListener('pointermove', move);
+      document.addEventListener('pointerup', up);
+    }
+
+    _reorderFilmstrip(fromIndex, targetIndex, before) {
+      this.deck.refreshSlides();
+      const slides = [...this.deck.slides];
+      const n = slides.length;
+      if (fromIndex < 0 || fromIndex >= n) return;
+      if (targetIndex < 0 || targetIndex >= n) return;
+
+      const beforeIds = slides.map((s) => s.id);
+      const [el] = slides.splice(fromIndex, 1);
+      let to;
+      if (before) {
+        to = fromIndex < targetIndex ? targetIndex - 1 : targetIndex;
+      } else {
+        to = fromIndex <= targetIndex ? targetIndex : targetIndex + 1;
+      }
+      to = Math.max(0, Math.min(slides.length, to));
+      slides.splice(to, 0, el);
+
+      const parent = slides[0].parentNode;
+      slides.forEach((s) => parent.appendChild(s));
+
+      this.deck.refreshSlides();
+      const afterIds = this.deck.slides.map((s) => s.id);
+
+      this.history.push({
+        undo: () => {
+          this._restoreOrder(parent, beforeIds);
+          this.deck.refreshSlides();
+          this.deck._updateChrome();
+          this.refresh();
+        },
+        redo: () => {
+          this._restoreOrder(parent, afterIds);
+          this.deck.refreshSlides();
+          this.deck._updateChrome();
+          this.refresh();
+        }
+      });
+      this.deck._updateChrome();
+      this.refresh();
+    }
+
+    _restoreOrder(parent, ids) {
+      const map = {};
+      Array.from(parent.querySelectorAll(':scope > section.slide')).forEach((s) => { map[s.id] = s; });
+      const frag = document.createDocumentFragment();
+      ids.forEach((id) => { if (map[id]) frag.appendChild(map[id]); });
+      parent.appendChild(frag);
+    }
+
+    _deleteSlide(index) {
+      this.deck.refreshSlides();
+      if (this.deck.slides.length <= 1) {
+        alert('At least one slide is required.');
+        return;
+      }
+      if (!confirm('Delete this slide?')) return;
+      const slide = this.deck.slides[index];
+      const parent = slide.parentNode;
+      const next = slide.nextElementSibling;
+      const outer = slide.outerHTML;
+      const nid = next && next.id ? next.id : null;
+      const sid = slide.id;
+
+      parent.removeChild(slide);
+      this.deck.refreshSlides();
+      this.history.push({
+        undo: () => {
+          const tpl = document.createElement('template');
+          tpl.innerHTML = outer.trim();
+          const node = tpl.content.firstElementChild;
+          if (nid) {
+            const ref = parent.querySelector('#' + CSS.escape(nid));
+            parent.insertBefore(node, ref);
+          } else parent.appendChild(node);
+          this.deck.refreshSlides();
+          ensureResizeHandles(document);
+          this.deck._updateChrome();
+          this.refresh();
+        },
+        redo: () => {
+          const el = document.getElementById(sid);
+          if (el && el.parentNode) el.parentNode.removeChild(el);
+          this.deck.refreshSlides();
+          this.deck._updateChrome();
+          this.refresh();
+        }
+      });
+      this.deck.goTo(Math.min(index, this.deck.slides.length - 1));
+      this.refresh();
+    }
+  }
+
+  function sanitizeEditableState(root) {
+    if (!root || !root.querySelectorAll) return;
+    root.querySelectorAll('.slide-object.is-selected').forEach((el) => {
+      el.classList.remove('is-selected');
+    });
+    root.querySelectorAll('.slide-object-text').forEach((el) => {
+      if (el.getAttribute('contenteditable') === 'true') {
+        el.setAttribute('contenteditable', 'false');
+      }
+      delete el.dataset._deckHtmlBefore;
+      el.removeAttribute('data-_deck-html-before');
+    });
+    root.querySelectorAll('.snap-line-v, .snap-line-h').forEach((el) => el.remove());
+  }
+
+  function serializeSlidesRoot(root) {
+    const clone = root.cloneNode(true);
+    sanitizeEditableState(clone);
+    return clone.innerHTML;
+  }
+
+  function sanitizeExportDocument(docEl) {
+    if (!docEl || !docEl.querySelector) return;
+    const body = docEl.querySelector('body');
+    if (body) {
+      body.classList.remove('deck-edit-mode', 'slide-anim-paused', 'deck-sidebar-open');
+    }
+    sanitizeEditableState(docEl);
+    const filmstrip = docEl.querySelector('#filmstripList');
+    if (filmstrip) filmstrip.innerHTML = '';
+    ['#editToggle', '#pagesToggle', '#btnSave', '#deckEditChrome', '#rteToolbar'].forEach((selector) => {
+      const el = docEl.querySelector(selector);
+      if (!el) return;
+      el.classList.remove('show', 'active', 'visible');
+      if (selector === '#rteToolbar') {
+        el.style.left = '';
+        el.style.top = '';
+      }
+    });
+  }
+
+  /* ---------- persistence ---------- */
+  function saveState() {
+    const root = document.querySelector('.slides-offset') || document.body;
+    const data = {
+      v: 2,
+      deckHtml: serializeSlidesRoot(root)
+    };
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (e) { console.warn(e); }
+  }
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (!data) return;
+      const parent = document.querySelector('.slides-offset') || document.body;
+      if (typeof data.deckHtml === 'string') {
+        parent.innerHTML = data.deckHtml;
+      } else if (Array.isArray(data.slides)) {
+        const map = {};
+        Array.from(parent.querySelectorAll(':scope > section.slide')).forEach((s) => { map[s.id] = s; });
+        data.slides.forEach((entry) => {
+          const el = map[entry.id];
+          if (el) el.innerHTML = entry.html;
+        });
+      } else return;
+      ensureResizeHandles(document);
+      deck.refreshSlides();
+      deck._syncCurrentFromScroll();
+      deck._updateChrome();
+    } catch (e) { console.warn(e); }
+  }
+
+  function exportHtml() {
+    const clone = document.documentElement.cloneNode(true);
+    sanitizeExportDocument(clone);
+    const html = '<!DOCTYPE html>\n' + clone.outerHTML;
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (document.title || 'deck') + '.html';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function exportPdf() {
+    const PW = 1280, PH = 720;
+    const clone = document.documentElement.cloneNode(true);
+    sanitizeExportDocument(clone);
+    clone.querySelectorAll('script').forEach((s) => s.remove());
+
+    const style = document.createElement('style');
+    style.id = 'deck-print-override';
+    style.textContent = [
+      '@page{size:' + PW + 'px ' + PH + 'px;margin:0}',
+      '*,*::before,*::after{animation:none!important;transition:none!important}',
+      'html{scroll-snap-type:none!important;scroll-behavior:auto!important}',
+      'html,body{width:' + PW + 'px!important;height:auto!important;overflow:visible!important;background:#000!important}',
+      '.slides-offset{display:block!important;width:' + PW + 'px!important}',
+      '.slide{',
+      '  width:' + PW + 'px!important;height:' + PH + 'px!important;',
+      '  max-height:' + PH + 'px!important;overflow:hidden!important;',
+      '  page-break-after:always!important;break-after:page!important;',
+      '  position:relative!important;display:flex!important;flex-direction:column!important',
+      '}',
+      '.slide:last-child{page-break-after:avoid!important;break-after:avoid!important}',
+      ['.progress-bar','.nav-dots','.deck-left-hover-anchor','#deckLeftHover',
+       '.slide-sidebar','#slideSidebar','.rte-toolbar','#rteToolbar',
+       '.slide-bg-replace-anchor','.slide-object-move','.slide-object-resize',
+       '.snap-line-v','.snap-line-h'].join(',') + '{display:none!important}',
+      '.reveal{opacity:1!important;transform:none!important}',
+      '.slide-edit-layer{pointer-events:none!important}'
+    ].join('\n');
+
+    const head = clone.querySelector('head');
+    if (head) head.appendChild(style);
+
+    // Auto-print after fonts load; the script runs inside the Blob window
+    const printScript = document.createElement('script');
+    printScript.textContent = [
+      'document.fonts.ready',
+      '  .then(function(){setTimeout(function(){window.focus();window.print();},350);})',
+      '  .catch(function(){setTimeout(function(){window.focus();window.print();},900);});'
+    ].join('');
+    const body = clone.querySelector('body');
+    if (body) body.appendChild(printScript);
+
+    const html = '<!DOCTYPE html>\n' + clone.outerHTML;
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank');
+    if (!win) {
+      URL.revokeObjectURL(url);
+      alert('PDF export blocked — please allow popups for this page, then try again.');
+      return;
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
+  /* ---------- init ---------- */
+  const btnUndo = document.getElementById('btnUndo');
+  const btnRedo = document.getElementById('btnRedo');
+  const btnDoneEdit = document.getElementById('btnDoneEdit');
+  const deckEditChromeEl = document.getElementById('deckEditChrome');
+  const deckLeftHover = document.getElementById('deckLeftHover');
+  const editToggle = document.getElementById('editToggle');
+  const pagesToggle = document.getElementById('pagesToggle');
+  const btnSave = document.getElementById('btnSave');
+
+  function updateUndoRedoChrome() {
+    if (btnUndo) {
+      btnUndo.disabled = !history.canUndo();
+      btnUndo.setAttribute('aria-disabled', btnUndo.disabled ? 'true' : 'false');
+    }
+    if (btnRedo) {
+      btnRedo.disabled = !history.canRedo();
+      btnRedo.setAttribute('aria-disabled', btnRedo.disabled ? 'true' : 'false');
+    }
+  }
+
+  const history = new HistoryStack(updateUndoRedoChrome);
+  const deck = new SlideDeck();
+  const editor = new SlideObjectEditor(deck, history);
+  const sidebar = new SlideSidebar(deck, history);
+
+  ensureResizeHandles(document);
+  editor.bind();
+  updateUndoRedoChrome();
+
+  document.addEventListener('focusout', (e) => {
+    const t = e.target;
+    if (!editor.active) return;
+    if (!t.classList || !t.classList.contains('slide-object-text')) return;
+    if (t.getAttribute('contenteditable') !== 'true') return;
+
+    setTimeout(() => {
+      if (!editor.active) return;
+      const ae = document.activeElement;
+      if (ae && (ae === t || t.contains(ae) || editor.toolbar.contains(ae))) return;
+      t.contentEditable = 'false';
+      const before = t.dataset._deckHtmlBefore;
+      if (before !== undefined && before !== t.innerHTML) {
+        const after = t.innerHTML;
+        history.push({
+          undo: () => { t.innerHTML = before; },
+          redo: () => { t.innerHTML = after; }
+        });
+      }
+      delete t.dataset._deckHtmlBefore;
+      editor.toolbar.classList.remove('visible');
+      updateUndoRedoChrome();
+    }, 0);
+  }, true);
+
+  if (btnUndo) {
+    btnUndo.addEventListener('mousedown', (ev) => ev.preventDefault());
+    btnUndo.addEventListener('click', () => { history.undo(); });
+  }
+  if (btnRedo) {
+    btnRedo.addEventListener('mousedown', (ev) => ev.preventDefault());
+    btnRedo.addEventListener('click', () => { history.redo(); });
+  }
+  if (btnDoneEdit) {
+    btnDoneEdit.addEventListener('click', () => exitEditMode());
+  }
+
+  function exitEditMode() {
+    editor.setActive(false);
+    editToggle.classList.remove('active');
+    pagesToggle.classList.remove('active');
+    sidebar.setOpen(false);
+    editToggle.classList.remove('show');
+    pagesToggle.classList.remove('show');
+    if (deckEditChromeEl) deckEditChromeEl.classList.remove('show');
+    if (btnSave) btnSave.classList.remove('show');
+    updateUndoRedoChrome();
+  }
+
+  function enterEditMode() {
+    editor.setActive(true);
+    editToggle.classList.add('active');
+    sidebar.setOpen(true);
+    updateUndoRedoChrome();
+  }
+
+  loadState();
+
+  deck.onSlideChange = () => {
+    if (sidebar.open) sidebar.refresh();
+    deck._updateChrome();
+  };
+
+  /* Top-left cluster: hover reveals controls (Edit / Pages / in edit mode Undo·Redo·Done) */
+  let hideT = null;
+  function showToggles() {
+    clearTimeout(hideT);
+    editToggle.classList.add('show');
+    pagesToggle.classList.add('show');
+    if (document.body.classList.contains('deck-edit-mode')) {
+      if (btnSave) btnSave.classList.add('show');
+      if (deckEditChromeEl) deckEditChromeEl.classList.add('show');
+    }
+  }
+  function scheduleHide() {
+    hideT = setTimeout(() => {
+      editToggle.classList.remove('show');
+      pagesToggle.classList.remove('show');
+      if (btnSave) btnSave.classList.remove('show');
+      if (deckEditChromeEl) deckEditChromeEl.classList.remove('show');
+    }, 400);
+  }
+  if (deckLeftHover) {
+    deckLeftHover.addEventListener('mouseenter', showToggles);
+    deckLeftHover.addEventListener('mouseleave', scheduleHide);
+  }
+  editToggle.addEventListener('mouseenter', () => clearTimeout(hideT));
+  editToggle.addEventListener('mouseleave', scheduleHide);
+  pagesToggle.addEventListener('mouseenter', () => clearTimeout(hideT));
+  pagesToggle.addEventListener('mouseleave', scheduleHide);
+  if (deckEditChromeEl) {
+    deckEditChromeEl.addEventListener('mouseenter', () => clearTimeout(hideT));
+    deckEditChromeEl.addEventListener('mouseleave', scheduleHide);
+  }
+  if (btnSave) {
+    btnSave.addEventListener('mouseenter', () => clearTimeout(hideT));
+    btnSave.addEventListener('mouseleave', scheduleHide);
+  }
+
+  editToggle.addEventListener('click', () => {
+    if (!editor.active) enterEditMode();
+  });
+
+  pagesToggle.addEventListener('click', () => {
+    sidebar.toggle();
+    pagesToggle.classList.toggle('active', sidebar.open);
+    if (sidebar.open) sidebar.refresh();
+  });
+
+  if (btnSave) btnSave.addEventListener('click', saveState);
+  document.getElementById('btnExport').addEventListener('click', exportHtml);
+  document.getElementById('btnExportPdf').addEventListener('click', exportPdf);
+
+  document.addEventListener('keydown', (e) => {
+    const ce = e.target.closest && e.target.closest('.slide-object-text[contenteditable="true"]');
+    if (editor.active && (e.key === 'Escape' || e.key === 'Esc')) {
+      if (ce) {
+        e.preventDefault();
+        ce.contentEditable = 'false';
+        ce.blur();
+        editor.toolbar.classList.remove('visible');
+        return;
+      }
+      e.preventDefault();
+      exitEditMode();
+      return;
+    }
+    if ((e.key === 'e' || e.key === 'E') && !ce) {
+      e.preventDefault();
+      if (editor.active) exitEditMode();
+      else enterEditMode();
+    }
+    if (editor.active && (e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+      e.preventDefault();
+      saveState();
+    }
+    if (editor.active && !ce && (e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+      e.preventDefault();
+      if (e.shiftKey) history.redo();
+      else history.undo();
+    }
+    if (editor.active && !ce && (e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
+      e.preventDefault();
+      history.redo();
+    }
+    if (editor.active && !ce && (e.key === 'Delete' || e.key === 'Backspace')) {
+      if (editor.selected.size === 0) return;
+      if (editor.selected.size >= 2 && !confirm('Delete ' + editor.selected.size + ' objects?')) return;
+      const toRemove = Array.from(editor.selected);
+      const snapshots = toRemove.map((el) => {
+        const slideSec = el.closest('section.slide');
+        return {
+          slideId: slideSec ? slideSec.id : '',
+          oid: el.getAttribute('data-oid') || '',
+          html: el.outerHTML
+        };
+      });
+      toRemove.forEach((el) => el.remove());
+      editor.clearSelection();
+      history.push({
+        undo: () => {
+          snapshots.forEach((s) => {
+            const slideSec = document.getElementById(s.slideId);
+            if (!slideSec) return;
+            const layer = slideSec.querySelector('.slide-edit-layer');
+            if (!layer) return;
+            const tpl = document.createElement('template');
+            tpl.innerHTML = s.html.trim();
+            const node = tpl.content.firstElementChild;
+            if (node) layer.appendChild(node);
+          });
+          ensureResizeHandles(document);
+        },
+        redo: () => {
+          snapshots.forEach((s) => {
+            const slideSec = document.getElementById(s.slideId);
+            if (!slideSec || !s.oid) return;
+            const n = slideSec.querySelector('[data-oid="' + s.oid.replace(/"/g, '') + '"]');
+            if (n) n.remove();
+          });
+        }
+      });
+    }
+  });
+
+  /* === Image features === */
+
+  // 1. Add image object to current slide
+  (function () {
+    var btn = document.getElementById('btnAddImage');
+    var inp = document.getElementById('deckImgInput');
+    if (!btn || !inp) return;
+    btn.addEventListener('click', function () { inp.click(); });
+    inp.addEventListener('change', function (e) {
+      var file = e.target.files[0]; if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function (ev) {
+        var src   = ev.target.result;
+        var slide = deck.slides[deck.current]; if (!slide) return;
+        var layer = slide.querySelector('.slide-edit-layer'); if (!layer) return;
+        var oid   = 's' + deck.current + '-img-' + Date.now();
+        var obj   = document.createElement('div');
+        obj.className = 'slide-object';
+        obj.setAttribute('data-slide-object', '');
+        obj.setAttribute('data-oid', oid);
+        obj.setAttribute('data-object-type', 'graphic');
+        obj.style.cssText = 'left:25%;top:20%;width:30%;height:40%;';
+        obj.innerHTML =
+          '<button type="button" class="slide-object-move" aria-label="Move">⠿</button>' +
+          '<button type="button" class="slide-object-resize" aria-label="Resize"></button>' +
+          '<div class="slide-object-graphic" style="width:100%;height:100%;">' +
+          '<img src="' + src + '" alt="" style="max-height:none;width:100%;height:100%;object-fit:contain;pointer-events:none;display:block;">' +
+          '</div>';
+        layer.appendChild(obj);
+        ensureResizeHandles(layer);
+        history.push({
+          undo: function () { var n = document.querySelector('[data-oid="' + oid + '"]'); if (n) n.remove(); },
+          redo: function () { layer.appendChild(obj); ensureResizeHandles(layer); }
+        });
+        updateUndoRedoChrome();
+      };
+      reader.readAsDataURL(file);
+      inp.value = '';
+    });
+  })();
+
+  // 2. Double-click graphic object → replace its image
+  document.addEventListener('dblclick', function (e) {
+    if (!editor.active) return;
+    var obj = e.target.closest && e.target.closest('[data-slide-object][data-object-type="graphic"]');
+    if (!obj) return;
+    var imgEl = obj.querySelector('img'); if (!imgEl) return;
+    var tmp = document.createElement('input');
+    tmp.type = 'file'; tmp.accept = 'image/*'; tmp.style.display = 'none';
+    document.body.appendChild(tmp);
+    tmp.click();
+    tmp.addEventListener('change', function (ev) {
+      var file = ev.target.files[0]; if (!file) { tmp.remove(); return; }
+      var reader = new FileReader();
+      reader.onload = function (re) {
+        var prev = imgEl.getAttribute('src');
+        var next = re.target.result;
+        imgEl.src = next;
+        history.push({
+          undo: function () { imgEl.src = prev; },
+          redo: function () { imgEl.src = next; }
+        });
+        updateUndoRedoChrome();
+        tmp.remove();
+      };
+      reader.readAsDataURL(file);
+    });
+  });
+
+  // 3. Slide background replace — reads data-bg-target="selector" on .slide-bg-replace-btn
+  document.addEventListener('click', function (e) {
+    if (!editor.active) return;
+    var btn = e.target.closest && e.target.closest('.slide-bg-replace-btn[data-bg-target]');
+    if (!btn) return;
+    var inp2 = document.getElementById('deckBgInput'); if (!inp2) return;
+    inp2._bgTarget = btn.getAttribute('data-bg-target');
+    inp2.click();
+  });
+  (function () {
+    var inp2 = document.getElementById('deckBgInput'); if (!inp2) return;
+    inp2.addEventListener('change', function (e) {
+      var file = e.target.files[0]; if (!file) return;
+      var sel = inp2._bgTarget; if (!sel) return;
+      var el = document.querySelector(sel); if (!el) return;
+      var reader = new FileReader();
+      reader.onload = function (ev) {
+        var prev = el.style.backgroundImage;
+        var next = "url('" + ev.target.result + "')";
+        el.style.backgroundImage = next;
+        history.push({
+          undo: function () { el.style.backgroundImage = prev; },
+          redo: function () { el.style.backgroundImage = next; }
+        });
+        updateUndoRedoChrome();
+      };
+      reader.readAsDataURL(file);
+      inp2.value = '';
+    });
+  })();
+
+  deck._updateChrome();
+
+  // Startup self-check: warn if any critical runtime element is absent
+  (['editToggle','pagesToggle','deckEditChrome','btnExport','btnExportPdf','rteToolbar','filmstripList'])
+    .filter((id) => !document.getElementById(id))
+    .forEach((id) => console.error('[deck-runtime] Missing required element: #' + id));
+})();

@@ -1,0 +1,51 @@
+<!-- Deck chrome HTML — extracted from frontend-slides-editable/examples/editable-deck-reference.html
+     Lines 435-483. Drop-in: paste right after <body>, before <div class="slides-offset">. -->
+
+<div class="deck-left-hover-anchor" id="deckLeftHover" aria-label="Deck controls">
+  <div class="deck-left-row">
+    <button type="button" class="edit-toggle" id="editToggle" title="Edit mode (E) — hover this corner to show">Edit</button>
+    <button type="button" class="sidebar-pages-toggle" id="pagesToggle" title="Pages sidebar">Pages</button>
+    <button type="button" class="deck-btn-save" id="btnSave" title="Save layout to browser (Ctrl+S)">Save</button>
+  </div>
+  <div class="deck-edit-chrome deck-left-row deck-left-row--tools" id="deckEditChrome" data-deck-chrome-surface="" role="toolbar" aria-label="Editing">
+    <button type="button" id="btnUndo" aria-label="Undo" title="Undo (Ctrl+Z)">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14l-4-4 4-4M5 10h8a5 5 0 010 10h-2"/></svg>
+    </button>
+    <button type="button" id="btnRedo" aria-label="Redo" title="Redo (Ctrl+Y / Ctrl+Shift+Z)">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 14l4-4-4-4M19 10h-8a5 5 0 000 10h2"/></svg>
+    </button>
+    <button type="button" class="deck-btn-done" id="btnDoneEdit">Done</button>
+  </div>
+</div>
+
+<!-- hidden file inputs for image upload -->
+<input type="file" id="deckImgInput"   accept="image/*" style="display:none">
+<input type="file" id="deckBgInput"    accept="image/*" style="display:none">
+
+<div class="progress-bar" id="progressBar"></div>
+<nav class="nav-dots" id="navDots" aria-label="Slides"></nav>
+
+<aside class="slide-sidebar" id="slideSidebar" aria-label="Slide pages">
+  <h3>Slides</h3>
+  <div class="filmstrip-list" id="filmstripList"></div>
+  <div class="filmstrip-actions" style="margin-top:auto;flex-direction:column;gap:6px;">
+    <button type="button" id="btnAddImage" style="width:100%;">＋ Add Image</button>
+    <button type="button" id="btnExport" style="width:100%;">Export HTML</button>
+    <button type="button" id="btnExportPdf" style="width:100%;">Export PDF</button>
+  </div>
+</aside>
+
+<div class="rte-toolbar" id="rteToolbar" role="toolbar" aria-label="Text format" data-deck-chrome-surface="">
+  <button type="button" data-cmd="bold"><strong>B</strong></button>
+  <button type="button" data-cmd="italic"><em>I</em></button>
+  <span class="rte-toolbar-group" aria-label="Font family">
+    <span class="rte-toolbar-meta">Font</span>
+    <button type="button" data-font="var(--font-body)">Body</button>
+    <button type="button" data-font="var(--font-display)">Display</button>
+  </span>
+  <span class="rte-toolbar-group" aria-label="Font size">
+    <button type="button" data-size-step="-1" title="Smaller (1px)">A−</button>
+    <button type="button" data-size-step="1" title="Larger (1px)">A+</button>
+  </span>
+</div>
+

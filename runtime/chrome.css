@@ -1,0 +1,265 @@
+/* Deck chrome CSS — extracted from frontend-slides-editable/examples/editable-deck-reference.html
+ * Lines 172-431. Updated when the reference runtime changes.
+ * Drop-in: paste into <style> after viewport-base.css.
+ */
+
+/* === deck chrome (fixed UI) === */
+.progress-bar {
+  position: fixed; top: 0; left: 0; height: 3px;
+  background: linear-gradient(90deg, var(--deck-chrome-accent), #a78bfa);
+  width: 0%; z-index: 8000; pointer-events: none;
+}
+.nav-dots {
+  position: fixed; bottom: clamp(0.5rem, 2vh, 1.25rem); left: 50%; transform: translateX(-50%);
+  display: flex; gap: 0.45rem; z-index: 8000;
+}
+.nav-dots button {
+  width: 9px; height: 9px; border-radius: 50%; border: none; padding: 0;
+  background: color-mix(in srgb, var(--deck-chrome-text) 22%, transparent); cursor: pointer;
+}
+.nav-dots button.active { background: var(--deck-chrome-accent); transform: scale(1.15); }
+
+/* === top-left cluster: hover reveals Edit / Pages / (in edit mode) Undo·Redo·Done === */
+.deck-left-hover-anchor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 10000;
+  padding: clamp(0.35rem, 1vh, 0.5rem) clamp(0.5rem, 1.2vw, 0.65rem);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: clamp(0.35rem, 1vh, 0.5rem);
+  min-width: min(280px, 72vw);
+  min-height: 44px;
+  pointer-events: auto;
+  background: transparent;
+}
+.deck-left-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: clamp(0.3rem, 0.9vw, 0.45rem);
+}
+.deck-left-row--tools {
+  flex-wrap: nowrap;
+  max-width: min(100vw - 1rem, 420px);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+/* === edit mode row: Undo / Redo / Done (top-left, hover-revealed) === */
+.deck-edit-chrome {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--deck-chrome-border);
+  background: var(--deck-chrome-bg);
+  box-shadow: var(--deck-chrome-shadow);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+body.deck-edit-mode .deck-edit-chrome {
+  display: flex;
+}
+body.deck-edit-mode .deck-edit-chrome.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+.deck-edit-chrome button {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid var(--deck-chrome-border);
+  background: var(--deck-chrome-surface);
+  color: var(--deck-chrome-text);
+  cursor: pointer;
+}
+.deck-edit-chrome button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--deck-chrome-accent) 18%, var(--deck-chrome-surface));
+}
+.deck-edit-chrome button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.deck-edit-chrome .deck-btn-done {
+  width: auto;
+  padding: 0 12px;
+  font-size: clamp(0.75rem, 1.2vw, 0.875rem);
+  font-weight: 600;
+  color: var(--slide-bg-deep);
+  background: var(--deck-chrome-accent);
+  border-color: color-mix(in srgb, var(--deck-chrome-accent) 70%, #000);
+}
+.deck-edit-chrome .deck-btn-done:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.deck-edit-chrome svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+.edit-toggle, .sidebar-pages-toggle, .deck-btn-save {
+  position: relative;
+  z-index: 10001;
+  border: 1px solid var(--deck-chrome-border);
+  background: var(--deck-chrome-bg); color: var(--deck-chrome-text); border-radius: 10px; padding: 8px 12px;
+  font-size: clamp(0.7rem, 1.1vw, 0.875rem); cursor: pointer; opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
+  white-space: nowrap;
+}
+.deck-btn-save { display: none; }
+body.deck-edit-mode .deck-btn-save {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.edit-toggle.show, .edit-toggle.active, .sidebar-pages-toggle.show, .sidebar-pages-toggle.active,
+body.deck-edit-mode .deck-btn-save.show { opacity: 1; pointer-events: auto; }
+
+/* === sidebar === */
+.slide-sidebar {
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(200px, 28vw);
+  background: var(--deck-chrome-bg); border-left: 1px solid var(--deck-chrome-border);
+  z-index: 9500; transform: translateX(100%); transition: transform 0.28s ease;
+  display: flex; flex-direction: column; padding: 10px 8px; gap: 8px;
+  box-shadow: -8px 0 32px rgba(0,0,0,0.35);
+}
+body.deck-sidebar-open .slide-sidebar { transform: translateX(0); }
+body.deck-sidebar-open .slides-offset { padding-right: min(200px, 28vw); }
+
+.slide-sidebar h3 {
+  font-size: clamp(0.65rem, 1.2vw, 0.8rem); text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--deck-chrome-muted); margin: 0 4px 4px;
+}
+.filmstrip-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.filmstrip-item {
+  position: relative; border-radius: 8px; border: 2px solid transparent;
+  background: color-mix(in srgb, var(--deck-chrome-surface) 80%, transparent); padding: 6px; cursor: grab; touch-action: none;
+}
+.filmstrip-item.is-current { border-color: var(--deck-chrome-accent); }
+.filmstrip-item.dragging { opacity: 0.55; }
+.filmstrip-item .filmstrip-drop-line {
+  display: none; height: 3px; background: #a78bfa; border-radius: 2px; margin: 4px 0;
+}
+.filmstrip-item.drop-before .filmstrip-drop-line-before { display: block; }
+.filmstrip-item.drop-after .filmstrip-drop-line-after { display: block; }
+.filmstrip-thumb-host { width: 100%; aspect-ratio: 16/9; overflow: hidden; border-radius: 6px; background: #020617; }
+.filmstrip-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; gap: 4px; }
+.filmstrip-actions button {
+  font-size: 11px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--deck-chrome-border);
+  background: var(--deck-chrome-surface); color: var(--deck-chrome-text); cursor: pointer;
+}
+.filmstrip-actions button:hover { filter: brightness(1.12); }
+.filmstrip-num { font-size: 11px; color: var(--deck-chrome-muted); }
+
+/* === slide edit layer & objects === */
+.slide-edit-layer {
+  position: absolute; inset: 0; z-index: 6; pointer-events: none;
+}
+body.deck-edit-mode .slide-edit-layer { pointer-events: none; }
+body.deck-edit-mode .slide { cursor: default; }
+
+.slide-object {
+  position: absolute; box-sizing: border-box; pointer-events: auto;
+  outline: 1px dashed transparent; border-radius: 4px;
+}
+body.deck-edit-mode .slide-object { outline-color: color-mix(in srgb, var(--deck-chrome-muted) 40%, transparent); }
+.slide-object.is-selected {
+  outline: 2px solid var(--deck-chrome-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--deck-chrome-accent) 25%, transparent);
+}
+
+.slide-object-move {
+  position: absolute; left: -22px; top: 4px; width: 20px; height: 28px;
+  border: 1px solid var(--deck-chrome-border); border-radius: 6px; background: var(--deck-chrome-bg);
+  color: var(--deck-chrome-muted); font-size: 12px; line-height: 1; padding: 0; cursor: grab;
+  display: none; align-items: center; justify-content: center; z-index: 2;
+}
+body.deck-edit-mode .slide-object-move { display: flex; }
+
+.slide-object-resize {
+  position: absolute; right: -7px; bottom: -7px; width: 14px; height: 14px;
+  border-radius: 3px; background: var(--deck-chrome-accent); cursor: nwse-resize;
+  display: none; z-index: 4; border: 1px solid var(--deck-chrome-border);
+  padding: 0; box-sizing: border-box;
+}
+body.deck-edit-mode .slide-object.is-selected .slide-object-resize { display: block; }
+
+.slide-object-text {
+  min-height: 1.2em; outline: none; font-size: var(--body-size);
+  width: 100%; box-sizing: border-box;
+  overflow-wrap: anywhere; word-break: break-word;
+}
+.slide-object[data-object-type="text"] .slide-object-text { cursor: text; }
+.slide-object-graphic { width: 100%; height: 100%; box-sizing: border-box; }
+
+.snap-line-v, .snap-line-h {
+  position: absolute; background: #f472b6; pointer-events: none; z-index: 7; opacity: 0.85;
+}
+.snap-line-v { width: 1px; top: 0; bottom: 0; }
+.snap-line-h { height: 1px; left: 0; right: 0; }
+
+/* === RTE toolbar === */
+.rte-toolbar {
+  position: fixed; z-index: 9600; display: none; flex-wrap: wrap; gap: 4px;
+  padding: 6px; background: var(--deck-chrome-bg); border: 1px solid var(--deck-chrome-border);
+  border-radius: 10px; box-shadow: var(--deck-chrome-shadow);
+}
+.rte-toolbar.visible { display: flex; }
+.rte-toolbar button {
+  border: 1px solid var(--deck-chrome-border); background: var(--deck-chrome-surface);
+  color: var(--deck-chrome-text); border-radius: 6px; padding: 4px 8px; font-size: 12px; cursor: pointer;
+}
+.rte-toolbar button.is-active {
+  outline: 2px solid var(--deck-chrome-accent); outline-offset: 1px;
+}
+.rte-toolbar-group {
+  display: inline-flex; align-items: center; gap: 4px; padding-left: 2px;
+  border-left: 1px solid color-mix(in srgb, var(--deck-chrome-border) 70%, transparent);
+  margin-left: 2px;
+}
+.rte-toolbar-group:first-of-type {
+  border-left: 0; margin-left: 0; padding-left: 0;
+}
+.rte-toolbar-meta {
+  font-size: 11px; color: var(--deck-chrome-muted); text-transform: uppercase; letter-spacing: 0.04em;
+}
+
+body.deck-edit-mode.slide-anim-paused .reveal { transition: none !important; }
+
+/* === Image features === */
+/* Add-image button in edit chrome */
+.deck-btn-add-img {
+  flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 36px; padding: 0 12px; border-radius: 8px;
+  border: 1px solid var(--deck-chrome-border);
+  background: var(--deck-chrome-surface); color: var(--deck-chrome-text);
+  cursor: pointer; font-size: clamp(0.7rem, 1.1vw, 0.875rem);
+  font-weight: 500; white-space: nowrap;
+}
+.deck-btn-add-img:hover {
+  background: color-mix(in srgb, var(--deck-chrome-accent) 18%, var(--deck-chrome-surface));
+}
+/* Graphic objects show pointer cursor in edit mode */
+body.deck-edit-mode [data-slide-object][data-object-type="graphic"] { cursor: pointer; }
+/* Slide background replace button */
+.slide-bg-replace-anchor {
+  position: absolute; z-index: 7; bottom: clamp(8px, 1.5vh, 16px); left: clamp(8px, 1.5vw, 16px);
+  display: none; pointer-events: auto;
+}
+body.deck-edit-mode .slide-bg-replace-anchor { display: block; }
+.slide-bg-replace-btn {
+  font-size: clamp(9px, 0.85vw, 11px); font-weight: 600;
+  color: rgba(255,255,255,0.85); background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.25); border-radius: 6px;
+  padding: 5px 10px; cursor: pointer; letter-spacing: 0.03em;
+  transition: background 0.15s, border-color 0.15s;
+}
+.slide-bg-replace-btn:hover { background: rgba(0,0,0,0.75); border-color: rgba(255,255,255,0.5); }
