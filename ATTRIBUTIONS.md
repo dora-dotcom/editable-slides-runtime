@@ -39,7 +39,7 @@ Templates adapted from external repositories. The visual design is credited to t
 | `scatterbrain` | `templates/scatterbrain/template.html` | _Pending port_ |
 | `pin-and-paper` | `templates/pin-and-paper/template.html` | _Pending port_ |
 | `daisy-days` | `templates/daisy-days/template.html` | _Pending port_ |
-| `bold-poster` | `templates/bold-poster/template.html` | _Pending port_ |
+| `bold-poster` | `templates/bold-poster/template.html` | ✅ Ported 2026-05-15 (4 of 10 slides) |
 | `studio` | `templates/studio/template.html` | _Pending port_ |
 | `pink-script` | `templates/pink-script/template.html` | _Pending port_ |
 | `coral` | `templates/coral/template.html` | _Pending port_ |
