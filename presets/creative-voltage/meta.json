@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "id": "creative-voltage",
+  "name": "Creative Voltage",
+  "vibe": [
+    "bold",
+    "experimental",
+    "energetic",
+    "retro"
+  ],
+  "mood": [
+    "excited",
+    "inspired"
+  ],
+  "category": "specialty",
+  "lightDark": "dark",
+  "typography": {
+    "display": "Syne",
+    "body": "Space Mono",
+    "source": "google-fonts"
+  },
+  "colors": {
+    "bg-primary": "#0066ff",
+    "bg-dark": "#1a1a2e",
+    "accent-neon": "#d4ff00",
+    "text-light": "#ffffff"
+  },
+  "capabilities": {
+    "pdfExport": true,
+    "imageUpload": true
+  },
+  "source": {
+    "origin": "original"
+  },
+  "ported": {
+    "by": "frontend-slides-editable",
+    "date": "2026-05-15",
+    "notes": "Migrated from skill examples/generated/presets/. Runtime swapped to current standard."
+  }
+}

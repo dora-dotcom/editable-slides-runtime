@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "pastel-geometry",
+  "name": "Pastel Geometry",
+  "vibe": [
+    "clean",
+    "playful",
+    "warm"
+  ],
+  "mood": [
+    "calm",
+    "inspired"
+  ],
+  "category": "playful",
+  "lightDark": "light",
+  "typography": {
+    "display": "Plus Jakarta Sans",
+    "body": "Plus Jakarta Sans",
+    "source": "google-fonts"
+  },
+  "colors": {
+    "bg-primary": "#c8d9e6",
+    "card-bg": "#faf9f7",
+    "pill-pink": "#f0b4d4",
+    "pill-mint": "#a8d4c4",
+    "pill-sage": "#5a7c6a",
+    "pill-lavender": "#9b8dc4",
+    "pill-violet": "#7c6aad"
+  },
+  "capabilities": {
+    "pdfExport": true,
+    "imageUpload": true
+  },
+  "source": {
+    "origin": "original"
+  },
+  "ported": {
+    "by": "frontend-slides-editable",
+    "date": "2026-05-15",
+    "notes": "Migrated from skill examples/generated/presets/. Runtime swapped to current standard."
+  }
+}

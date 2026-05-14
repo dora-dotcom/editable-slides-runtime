@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "id": "electric-studio",
+  "name": "Electric Studio",
+  "vibe": [
+    "clean",
+    "professional",
+    "minimal"
+  ],
+  "mood": [
+    "impressed",
+    "calm"
+  ],
+  "category": "light",
+  "lightDark": "light",
+  "typography": {
+    "display": "Manrope",
+    "body": "Manrope",
+    "source": "google-fonts"
+  },
+  "colors": {
+    "bg-dark": "#0a0a0a",
+    "bg-white": "#ffffff",
+    "accent-blue": "#4361ee",
+    "text-dark": "#0a0a0a",
+    "text-light": "#ffffff"
+  },
+  "capabilities": {
+    "pdfExport": true,
+    "imageUpload": true
+  },
+  "source": {
+    "origin": "original"
+  },
+  "ported": {
+    "by": "frontend-slides-editable",
+    "date": "2026-05-15",
+    "notes": "Migrated from skill examples/generated/presets/. Runtime swapped to current standard."
+  }
+}

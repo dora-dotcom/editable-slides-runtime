@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "id": "terminal-green",
+  "name": "Terminal Green",
+  "vibe": [
+    "minimal",
+    "futuristic",
+    "academic"
+  ],
+  "mood": [
+    "impressed",
+    "calm"
+  ],
+  "category": "specialty",
+  "lightDark": "dark",
+  "typography": {
+    "display": "JetBrains Mono",
+    "body": "JetBrains Mono",
+    "source": "google-fonts"
+  },
+  "colors": {
+    "bg-deep": "#0d1117",
+    "accent-green": "#39d353",
+    "text-light": "#c9d1d9"
+  },
+  "capabilities": {
+    "pdfExport": true,
+    "imageUpload": true
+  },
+  "source": {
+    "origin": "original"
+  },
+  "ported": {
+    "by": "frontend-slides-editable",
+    "date": "2026-05-15",
+    "notes": "Migrated from skill examples/generated/presets/. Runtime swapped to current standard."
+  }
+}

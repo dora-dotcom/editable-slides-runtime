@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "split-pastel",
+  "name": "Split Pastel",
+  "vibe": [
+    "playful",
+    "warm",
+    "energetic"
+  ],
+  "mood": [
+    "excited",
+    "inspired"
+  ],
+  "category": "playful",
+  "lightDark": "light",
+  "typography": {
+    "display": "Outfit",
+    "body": "Outfit",
+    "source": "google-fonts"
+  },
+  "colors": {
+    "bg-peach": "#f5e6dc",
+    "bg-lavender": "#e4dff0",
+    "text-dark": "#1a1a1a",
+    "badge-mint": "#c8f0d8",
+    "badge-yellow": "#f0f0c8",
+    "badge-pink": "#f0d4e0"
+  },
+  "capabilities": {
+    "pdfExport": true,
+    "imageUpload": true
+  },
+  "source": {
+    "origin": "original"
+  },
+  "ported": {
+    "by": "frontend-slides-editable",
+    "date": "2026-05-15",
+    "notes": "Migrated from skill examples/generated/presets/. Runtime swapped to current standard."
+  }
+}

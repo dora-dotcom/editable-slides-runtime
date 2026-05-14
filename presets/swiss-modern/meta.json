@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "id": "swiss-modern",
+  "name": "Swiss Modern",
+  "vibe": [
+    "clean",
+    "minimal",
+    "editorial"
+  ],
+  "mood": [
+    "calm",
+    "impressed"
+  ],
+  "category": "specialty",
+  "lightDark": "light",
+  "typography": {
+    "display": "Archivo",
+    "body": "Nunito",
+    "source": "google-fonts"
+  },
+  "colors": {
+    "sw-bg": "#ffffff",
+    "sw-black": "#0a0a0a",
+    "sw-red": "#ff3300"
+  },
+  "capabilities": {
+    "pdfExport": true,
+    "imageUpload": true
+  },
+  "source": {
+    "origin": "original"
+  },
+  "ported": {
+    "by": "frontend-slides-editable",
+    "date": "2026-05-15",
+    "notes": "Migrated from skill examples/generated/presets/. Runtime swapped to current standard."
+  }
+}
