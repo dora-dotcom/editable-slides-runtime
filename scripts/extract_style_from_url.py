@@ -28,9 +28,15 @@ import shutil
 import subprocess
 import sys
 import urllib.request
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import date
 from pathlib import Path
+
+try:
+    from PIL import Image
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
 
 
 CHROME_CANDIDATES = [
@@ -183,60 +189,211 @@ FONT_FAMILY_RE = re.compile(
     r'font-family\s*:\s*([^;{}"\']+)',
     re.IGNORECASE,
 )
+# CSS rule block matcher: captures selector list and declaration body.
+CSS_RULE_RE = re.compile(r'([^{}@]+?)\{([^{}]*)\}', re.DOTALL)
+# Match heading-indicating tokens — either as bare tag (h1-h3, body, p) OR
+# as a SUBSTRING in a class/id selector (so `.si2-blog-title` and
+# `.custom-rich-text-heading` both qualify).
+HEADING_SEL_RE = re.compile(
+    r'(?:^|[\s,>+~])h[1-3]\b'
+    r'|[.#][\w-]*(?:title|heading|headline|hero|display|cover|h[1-3])(?:[\w-]*)?',
+    re.IGNORECASE,
+)
+BODY_SEL_RE = re.compile(
+    r'(?:^|[\s,>+~])(?:body|p)\b'
+    r'|[.#][\w-]*(?:body|text|copy|paragraph|prose|description|lead)(?:[\w-]*)?',
+    re.IGNORECASE,
+)
+
+
+def _parse_font_size_px(value: str) -> float:
+    """Coarse normalize a CSS font-size value to a ~px number for scoring."""
+    m = re.match(r'\s*([0-9.]+)\s*(px|rem|em|vw|vh|%|pt)?', value or '')
+    if not m:
+        return 0.0
+    n = float(m.group(1))
+    unit = (m.group(2) or 'px').lower()
+    if unit == 'rem' or unit == 'em':
+        return n * 16
+    if unit == 'vw' or unit == 'vh':
+        return n * 12.8  # at 1280 width
+    if unit == 'pt':
+        return n * 1.333
+    if unit == '%':
+        return n * 0.16  # rough; assume 16px base
+    return n
+
+
+def _first_family(decl_value: str) -> str:
+    """Pick first concrete family from a font-family stack."""
+    first = decl_value.split(',')[0].strip().strip('"\'').strip()
+    if not first or first.startswith(('var(', 'inherit', 'initial', 'unset')):
+        return ''
+    return first
+
+
+FONT_SIZE_DECL_RE = re.compile(r'font-size\s*:\s*([^;{}!]+)', re.IGNORECASE)
+DISPLAY_PX_THRESHOLD = 28   # any font used at >=28px treated as display candidate
+BODY_PX_THRESHOLD    = 20   # <=20px treated as body candidate
+
+
+def parse_font_roles_from_rules(html: str):
+    """Walk CSS rules; classify each font-family declaration.
+
+    Scoring uses BOTH:
+      - Selector context (heading vs body vs neutral)
+      - Font-size in the same rule (large → display, small → body)
+      - Weighted by font-size value for display scoring
+
+    Returns (display_score, body_score, neutral_count) — all Counter-like dicts.
+    """
+    display_score = Counter()
+    body_score = Counter()
+    neutral = Counter()
+    for m in CSS_RULE_RE.finditer(html):
+        selector = m.group(1).strip()
+        decls = m.group(2)
+        ff = FONT_FAMILY_RE.search(decls)
+        if not ff:
+            continue
+        family = _first_family(ff.group(1))
+        if not family:
+            continue
+
+        is_heading_sel = bool(HEADING_SEL_RE.search(selector))
+        is_body_sel = bool(BODY_SEL_RE.search(selector))
+
+        fs_match = FONT_SIZE_DECL_RE.search(decls)
+        fs_px = _parse_font_size_px(fs_match.group(1)) if fs_match else 0.0
+
+        # Display score: heading selector OR font-size > threshold
+        if is_heading_sel or fs_px >= DISPLAY_PX_THRESHOLD:
+            # Weight by font-size when known, else by selector match
+            score = max(fs_px, 24) if fs_px else (24 if is_heading_sel else 0)
+            display_score[family] += score
+        elif is_body_sel or (0 < fs_px <= BODY_PX_THRESHOLD):
+            body_score[family] += max(fs_px, 12) if fs_px else 12
+        else:
+            neutral[family] += 1
+
+    return display_score, body_score, neutral
 
 
 def extract_fonts(html: str):
-    """Return (display_font, body_font, fonts_link_url)."""
+    """Return (display_font, body_font, fonts_link_url, debug_info).
+
+    Uses selector context (h1/h2/.title vs body/p/.text) to assign roles,
+    falling back to overall frequency for ambiguous cases.
+    """
     # Find Google Fonts URLs to reconstruct a fonts_link
     google_families = []
     fonts_link = ''
     for m in GOOGLE_FONTS_RE.finditer(html):
         family_blob = m.group(1)
-        # family_blob is like "Inter:wght@400;700" or chained with &family=
         for chunk in family_blob.split('&family='):
             name = chunk.split(':')[0].replace('+', ' ').strip()
             if name and name not in google_families:
                 google_families.append(name)
 
-    # Try to find original full <link href="...fonts.googleapis.com/css..."> tag
     link_match = re.search(r'href=["\']([^"\']*fonts\.googleapis\.com/css2?[^"\']+)["\']', html)
     if link_match:
         fonts_link = link_match.group(1).replace('&amp;', '&')
 
-    # Extract font-family declarations
-    family_counts = Counter()
-    for m in FONT_FAMILY_RE.finditer(html):
-        decl = m.group(1).strip()
-        # First family in the stack wins
-        first = decl.split(',')[0].strip().strip('"\'').strip()
-        if first and not first.startswith(('var(', 'inherit', 'initial', 'unset')):
-            family_counts[first] += 1
+    # Selector + font-size aware scoring
+    display_score, body_score, neutral_counts = parse_font_roles_from_rules(html)
 
-    ranked = [name for name, _ in family_counts.most_common()]
+    # Pick display: highest-scoring family from display pool
+    display = ''
+    if display_score:
+        display = display_score.most_common(1)[0][0]
 
-    # Prefer Google-loaded families when available
-    pool = []
-    for f in ranked:
-        if any(f.lower() == g.lower() for g in google_families):
-            pool.append(f)
-    for f in google_families:
-        if f not in pool:
-            pool.append(f)
-    for f in ranked:
-        if f not in pool:
-            pool.append(f)
+    # Pick body: highest-scoring family from body pool (not the same as display)
+    body_font = ''
+    if body_score:
+        for name, _ in body_score.most_common():
+            if name != display:
+                body_font = name
+                break
 
-    display = pool[0] if pool else 'Inter'
-    body = pool[1] if len(pool) > 1 else display
+    # Fallback: any neutral or fallback to overall frequency
+    if not display or not body_font:
+        all_counts = Counter()
+        for c in (display_score, body_score, neutral_counts):
+            for k, v in c.items():
+                all_counts[k] += v
+        ranked = [name for name, _ in all_counts.most_common()]
+        if not display and ranked:
+            display = ranked[0]
+        if not body_font:
+            for name in ranked:
+                if name != display:
+                    body_font = name
+                    break
+            body_font = body_font or display
 
-    if not fonts_link and google_families:
-        # Construct a reasonable Google Fonts URL from extracted families
-        families_param = '&'.join(
-            'family=' + g.replace(' ', '+') + ':wght@400;500;600;700' for g in google_families[:3]
-        )
-        fonts_link = f'https://fonts.googleapis.com/css2?{families_param}&display=swap'
+    # Final safety net
+    if not display:
+        display = 'Inter'
+    if not body_font:
+        body_font = display
 
-    return display, body, fonts_link
+    if not fonts_link:
+        # Even if the source site didn't use Google Fonts, try loading our
+        # chosen display + body via Google Fonts. Unknown families silently
+        # fall back, so the worst case is the system font we'd see anyway.
+        wanted = []
+        for f in (display, body_font):
+            if f and f not in wanted:
+                wanted.append(f)
+        for g in google_families:
+            if g not in wanted:
+                wanted.append(g)
+        if wanted:
+            families_param = '&'.join(
+                'family=' + g.replace(' ', '+') + ':wght@400;500;600;700;800'
+                for g in wanted[:3]
+            )
+            fonts_link = f'https://fonts.googleapis.com/css2?{families_param}&display=swap'
+
+    debug = {
+        'display_top': [(k, round(v)) for k, v in display_score.most_common(3)],
+        'body_top':    [(k, round(v)) for k, v in body_score.most_common(3)],
+        'neutral_top': neutral_counts.most_common(3),
+    }
+    return display, body_font, fonts_link, debug
+
+
+# ─── Heading typography (font-size / weight / letter-spacing / text-transform) ─
+
+H1_BLOCK_RE = re.compile(
+    r'(?:^|[\s,>+~])h1\b[^{}]*\{([^}]+)\}',
+    re.IGNORECASE | re.DOTALL,
+)
+
+NUMERIC_DECL = {
+    'font-size':       re.compile(r'font-size\s*:\s*([^;{}]+)', re.IGNORECASE),
+    'font-weight':     re.compile(r'font-weight\s*:\s*(\d{3}|bold|normal|[1-9]00)', re.IGNORECASE),
+    'line-height':     re.compile(r'line-height\s*:\s*([0-9.]+)', re.IGNORECASE),
+    'letter-spacing':  re.compile(r'letter-spacing\s*:\s*([-0-9.a-z%]+)', re.IGNORECASE),
+    'text-transform':  re.compile(r'text-transform\s*:\s*(uppercase|lowercase|capitalize|none)', re.IGNORECASE),
+}
+
+
+def extract_h1_typography(html: str):
+    """Best-effort: scan rules that target h1 and pull common type properties."""
+    found = {}
+    for m in CSS_RULE_RE.finditer(html):
+        sel = m.group(1).strip()
+        if not re.search(r'(?:^|[\s,>+~])h1\b', sel, re.IGNORECASE):
+            continue
+        decls = m.group(2)
+        for prop, pat in NUMERIC_DECL.items():
+            if prop in found:
+                continue
+            mm = pat.search(decls)
+            if mm:
+                found[prop] = mm.group(1).strip()
+    return found
 
 
 # ─── Heuristic classification ─────────────────────────────────────────────────
@@ -256,7 +413,9 @@ def guess_vibe_mood_category(palette, display_font):
     paper_warm = paper[0] > paper[2] + 8
 
     serif_keywords = ['Serif', 'Garamond', 'Bodoni', 'Playfair', 'Fraunces', 'Cormorant',
-                      'Lora', 'Newsreader', 'Instrument']
+                      'Lora', 'Newsreader', 'Instrument', 'Adamina', 'Caslon', 'Georgia',
+                      'Times', 'Spectral', 'Crimson', 'Bricolage', 'DM Serif', 'Big Shoulders',
+                      'Italianno', 'Old Standard', 'Vollkorn', 'Merriweather', 'PT Serif']
     is_serif_display = any(k in display_font for k in serif_keywords)
 
     vibe = []
@@ -321,14 +480,40 @@ def snapshot_url(url: str, out_path: Path, width=1280, height=720):
     return out_path.is_file()
 
 
+def image_palette_from_screenshot(snapshot_path: Path, n_colors: int = 8):
+    """Sample dominant colors from a screenshot.
+
+    Returns Counter mapping RGB tuples to occurrence count (in pixels).
+    Uses PIL median-cut quantization. Skips when PIL is unavailable.
+    """
+    if not HAS_PIL or not snapshot_path.is_file():
+        return Counter()
+    try:
+        img = Image.open(snapshot_path).convert('RGB')
+    except Exception:
+        return Counter()
+    # Downsample for speed and noise reduction
+    img.thumbnail((240, 240))
+    quant = img.quantize(colors=n_colors, method=Image.Quantize.MEDIANCUT)
+    palette_flat = quant.getpalette() or []
+    palette_rgb = [tuple(palette_flat[i:i + 3]) for i in range(0, n_colors * 3, 3)]
+    counts = quant.getcolors() or []
+    out = Counter()
+    for count, idx in counts:
+        if idx < len(palette_rgb):
+            out[palette_rgb[idx]] += count
+    return out
+
+
 # ─── Template synthesis ───────────────────────────────────────────────────────
 
-def synth_theme_css(palette, fonts_link, display, body):
+def synth_theme_css(palette, fonts_link, display, body, h1_props=None):
     paper = rgb_to_hex(palette['paper'])
     ink = rgb_to_hex(palette['ink'])
     accent = rgb_to_hex(palette['accent'])
     muted = rgb_to_hex(palette.get('muted', palette['ink']))
     light_dark = guess_light_dark(palette['paper'])
+    h1_props = h1_props or {}
 
     # Map to deck-chrome contrast set
     if light_dark == 'light':
@@ -388,8 +573,11 @@ body {{ margin: 0; font-family: var(--font-body); background: var(--uc-paper); c
 }}
 .uc-h1 {{
   font-family: var(--font-display);
-  font-weight: 700; font-size: clamp(56px, 9vw, 140px);
-  line-height: 0.95; letter-spacing: -0.02em;
+  font-weight: {h1_props.get('font-weight', '700')};
+  font-size: clamp(56px, 9vw, 140px);
+  line-height: {h1_props.get('line-height', '0.95')};
+  letter-spacing: {h1_props.get('letter-spacing', '-0.02em')};
+  text-transform: {h1_props.get('text-transform', 'none')};
   color: var(--uc-ink);
 }}
 .uc-h2 {{
@@ -642,24 +830,58 @@ def main():
     html = fetch_html(args.url)
     print(f'  HTML: {len(html):,} chars')
 
-    print('Extracting palette ...')
-    counts = collect_colors(html)
-    clustered = cluster_colors(counts)
-    palette = classify_palette(clustered)
-    print(f'  Palette: {", ".join(f"{k}={rgb_to_hex(v)}" for k, v in palette.items())}')
+    print(f'Creating presets/{args.id}/ ...')
+    preset_dir.mkdir(parents=True)
 
-    print('Extracting fonts ...')
-    display, body, fonts_link = extract_fonts(html)
+    # 1. Snapshot the URL FIRST — used for image palette + reference
+    src_png = preset_dir / '_source.png'
+    print(f'Snapshotting {args.url} -> _source.png ...')
+    snap_ok = snapshot_url(args.url, src_png)
+    print('  OK' if snap_ok else '  (skipped)')
+
+    # 2. CSS-based palette
+    print('Extracting palette (CSS) ...')
+    css_counts = collect_colors(html)
+
+    # 3. Image-sampled palette from the screenshot
+    print('Sampling palette (screenshot) ...')
+    img_counts = image_palette_from_screenshot(src_png) if snap_ok else Counter()
+    if img_counts:
+        # Image-pixel counts dwarf CSS-occurrence counts; normalize so they compete
+        max_img = max(img_counts.values())
+        max_css = max(css_counts.values()) if css_counts else 1
+        scale = max(1, max_css / max(1, max_img)) * 4  # image colors get a slight visual-prominence boost
+        scaled_img = Counter()
+        for rgb, c in img_counts.items():
+            scaled_img[rgb] = int(c * scale)
+        merged = css_counts + scaled_img
+        print(f'  Image-sampled: {len(img_counts)} unique colors')
+    else:
+        merged = css_counts
+
+    clustered = cluster_colors(merged)
+    palette = classify_palette(clustered)
+    print(f'  Final palette: {", ".join(f"{k}={rgb_to_hex(v)}" for k, v in palette.items())}')
+
+    # 4. Context-aware font extraction
+    print('Extracting fonts (selector-aware) ...')
+    display, body, fonts_link, font_debug = extract_fonts(html)
     print(f'  Display: {display}    Body: {body}')
+    if font_debug['display_top']:
+        print(f'  Display candidates (selector + font-size weighted): {font_debug["display_top"]}')
+    if font_debug['body_top']:
+        print(f'  Body candidates:    {font_debug["body_top"]}')
+
+    # 5. Heading typography hints
+    h1_props = extract_h1_typography(html)
+    if h1_props:
+        print(f'  H1 typography: {h1_props}')
 
     light_dark = guess_light_dark(palette['paper'])
     vibe, mood, category, _ = guess_vibe_mood_category(palette, display)
     print(f'  Classified: vibe={vibe}  mood={mood}  category={category}  lightDark={light_dark}')
 
-    print(f'Creating presets/{args.id}/ ...')
-    preset_dir.mkdir(parents=True)
-
-    theme_css = synth_theme_css(palette, fonts_link, display, body)
+    theme_css = synth_theme_css(palette, fonts_link, display, body, h1_props=h1_props)
     slides_html = synth_slides_html(name, args.url)
     template_html = build_template(args.id, f'{name} — Editable Slide Template (draft)',
                                     args.id, fonts_link, theme_css, slides_html,
@@ -669,12 +891,6 @@ def main():
     write_preset_md(preset_dir / 'preset.md', name, args.url, palette, display, body, vibe, light_dark)
     write_meta_json(preset_dir / 'meta.json', args.id, name, args.url, palette,
                     display, body, vibe, mood, category, light_dark)
-
-    print(f'Snapshotting {args.url} -> _source.png ...')
-    if snapshot_url(args.url, preset_dir / '_source.png'):
-        print('  OK')
-    else:
-        print('  (skipped)')
 
     print()
     print(f'Draft preset ready:  presets/{args.id}/')
