@@ -39,25 +39,49 @@ SKILL_FILENAME_TO_ID = {
 }
 
 
-def swap_runtime(src_html: str, runtime_js: str) -> str:
-    """Replace all <script>...</script> with one fresh script containing runtime_js."""
-    matches = list(re.finditer(r'<script\b[^>]*>.*?</script>', src_html, re.DOTALL | re.IGNORECASE))
-    if not matches:
+def swap_runtime(src_html: str, runtime_js: str, chrome_html: str = '') -> str:
+    """Refresh both runtime <script> AND deck chrome HTML.
+
+    The chrome HTML region (between <body> opening and the FIRST
+    <div class="slides-offset"> opening) holds buttons + file inputs the
+    runtime expects. If the source skill repo's chrome is older than the
+    runtime contract, A−/A+, + Add Image, and deckImgInput/deckBgInput
+    can be missing — migrate must refresh chrome too, not just the script.
+    """
+    # 1) Strip every script block
+    pat = re.compile(r'<script\b[^>]*>.*?</script>', re.DOTALL | re.IGNORECASE)
+    if not pat.search(src_html):
         raise ValueError('No <script> block found in source — is this a valid skill preset?')
-    # Strip every script tag
-    stripped = re.sub(r'<script\b[^>]*>.*?</script>', '', src_html, flags=re.DOTALL | re.IGNORECASE)
-    # Insert fresh runtime before </body>
-    body_close = re.search(r'</body>', stripped, re.IGNORECASE)
-    if not body_close:
-        raise ValueError('No </body> found in source')
+    out = pat.sub('', src_html)
+
+    body_open = re.search(r'<body[^>]*>', out, re.IGNORECASE)
+    body_close = re.search(r'</body>', out, re.IGNORECASE)
+    if not body_open or not body_close:
+        raise ValueError('No <body>/<\\/body> in source')
+
+    # 2) Refresh deck chrome HTML if provided.
+    # Find the REAL <div class="slides-offset"> — it can appear in chrome.html's
+    # comment header text, so we take the LAST occurrence (the real opening tag).
+    if chrome_html:
+        positions = [m.start() for m in re.finditer(r'<div class="slides-offset">', out)]
+        if positions:
+            chrome_end = positions[-1]
+            out = (
+                out[:body_open.end()]
+                + '\n' + chrome_html.rstrip() + '\n\n'
+                + out[chrome_end:]
+            )
+
+    # 3) Inject fresh runtime <script> right before </body>
+    body_close = re.search(r'</body>', out, re.IGNORECASE)
     injection = '\n<script>\n' + runtime_js + '\n</script>\n'
-    return stripped[:body_close.start()] + injection + stripped[body_close.start():]
+    return out[:body_close.start()] + injection + out[body_close.start():]
 
 
-def migrate_one(src_path: Path, dst_dir: Path, runtime_js: str) -> bool:
+def migrate_one(src_path: Path, dst_dir: Path, runtime_js: str, chrome_html: str = '') -> bool:
     src_html = src_path.read_text(encoding='utf-8')
     try:
-        out_html = swap_runtime(src_html, runtime_js)
+        out_html = swap_runtime(src_html, runtime_js, chrome_html=chrome_html)
     except ValueError as e:
         print(f'  FAIL {src_path.name}: {e}')
         return False
@@ -81,12 +105,13 @@ def main():
 
     root = Path(args.repo_root)
     runtime_js = (root / 'runtime' / 'runtime.js').read_text(encoding='utf-8')
+    chrome_html = (root / 'runtime' / 'chrome.html').read_text(encoding='utf-8')
 
     if args.source:
         src_path = Path(args.source)
         preset_id = args.id or SKILL_FILENAME_TO_ID.get(src_path.stem) or src_path.stem
         dst = root / 'presets' / preset_id
-        ok = migrate_one(src_path, dst, runtime_js)
+        ok = migrate_one(src_path, dst, runtime_js, chrome_html=chrome_html)
         sys.exit(0 if ok else 1)
 
     if not args.all:
@@ -102,7 +127,7 @@ def main():
             fail += 1
             continue
         dst = root / 'presets' / preset_id
-        if migrate_one(src, dst, runtime_js):
+        if migrate_one(src, dst, runtime_js, chrome_html=chrome_html):
             ok += 1
         else:
             fail += 1

@@ -624,6 +624,8 @@
   </style>
 </head>
 <body>
+<!-- Deck chrome HTML — extracted from frontend-slides-editable/examples/editable-deck-reference.html
+     Lines 435-483. Drop-in: paste right after <body>, before <div class="slides-offset">. -->
 
 <div class="deck-left-hover-anchor" id="deckLeftHover" aria-label="Deck controls">
   <div class="deck-left-row">
@@ -642,14 +644,19 @@
   </div>
 </div>
 
+<!-- hidden file inputs for image upload -->
+<input type="file" id="deckImgInput"   accept="image/*" style="display:none">
+<input type="file" id="deckBgInput"    accept="image/*" style="display:none">
+
 <div class="progress-bar" id="progressBar"></div>
 <nav class="nav-dots" id="navDots" aria-label="Slides"></nav>
 
 <aside class="slide-sidebar" id="slideSidebar" aria-label="Slide pages">
   <h3>Slides</h3>
   <div class="filmstrip-list" id="filmstripList"></div>
-  <div class="filmstrip-actions" style="margin-top:auto;">
-    <button type="button" id="btnExport">Export HTML</button>
+  <div class="filmstrip-actions" style="margin-top:auto;flex-direction:column;gap:6px;">
+    <button type="button" id="btnAddImage" style="width:100%;">＋ Add Image</button>
+    <button type="button" id="btnExport" style="width:100%;">Export HTML</button>
     <button type="button" id="btnExportPdf" style="width:100%;">Export PDF</button>
   </div>
 </aside>
@@ -663,11 +670,8 @@
     <button type="button" data-font="var(--font-display)">Display</button>
   </span>
   <span class="rte-toolbar-group" aria-label="Font size">
-    <span class="rte-toolbar-meta">Size</span>
-    <button type="button" data-size="0.85">S</button>
-    <button type="button" data-size="1">M</button>
-    <button type="button" data-size="1.2">L</button>
-    <button type="button" data-size="1.45">XL</button>
+    <button type="button" data-size-step="-1" title="Smaller (1px)">A−</button>
+    <button type="button" data-size-step="1" title="Larger (1px)">A+</button>
   </span>
 </div>
 
