@@ -960,20 +960,41 @@ body {{ margin: 0; font-family: var(--font-body); background: var(--uc-paper); c
 """
 
 
+def _bg_container(slide_id: str, initial_url: str = '') -> str:
+    """A user-editable bg container for one slide.
+
+    The `slide-bg-replace-btn` (rendered only in edit mode) writes the
+    selected image into this container's `background-image` via the
+    runtime handler, scoped to `#slide_id .slide-bg-container`.
+    """
+    initial = ''
+    if initial_url:
+        initial = (
+            f"background-image:linear-gradient(rgba(255,255,255,0.55),"
+            f"rgba(255,255,255,0.85)),url('{initial_url}');"
+        )
+    return (
+        f'<div class="slide-bg-container" '
+        f'style="position:absolute;inset:0;{initial}'
+        f'background-size:cover;background-position:center;'
+        f'background-repeat:no-repeat;pointer-events:none;z-index:0;"></div>\n'
+        f'  <div class="slide-bg-replace-anchor">'
+        f'<button type="button" class="slide-bg-replace-btn" '
+        f'data-bg-target="#{slide_id} .slide-bg-container">'
+        f'📷 Replace background</button></div>'
+    )
+
+
 def synth_slides_html(name: str, source_url: str, hero_image: str = ''):
     """Three placeholder slides demonstrating the extracted style.
 
-    If `hero_image` is a relative filename (e.g. 'hero.jpg') it is referenced
-    as a background-image on slide-0 with a faint paper overlay for legibility.
+    Slide 0 is seeded with the extracted hero_image (if any) as its
+    bg-container background. All slides get a `📷 Replace background`
+    button that's only visible in edit mode.
     """
-    hero_bg_style = ''
-    if hero_image:
-        hero_bg_style = (
-            f"background-image:linear-gradient(rgba(255,255,255,0.55),rgba(255,255,255,0.85)),url('{hero_image}');"
-            "background-size:cover;background-position:center;"
-        )
     return f'''
-<section class="slide visible" id="slide-0" style="padding:64px;{hero_bg_style}">
+<section class="slide visible" id="slide-0" style="padding:64px;">
+  {_bg_container("slide-0", hero_image)}
   <div class="slide-edit-layer">
     <div class="slide-object" data-slide-object data-oid="s0-meta" data-object-type="text" style="left:5%;top:8%;width:60%;">
       <button type="button" class="slide-object-move" aria-label="Move">⠿</button>
@@ -1005,6 +1026,7 @@ def synth_slides_html(name: str, source_url: str, hero_image: str = ''):
 </section>
 
 <section class="slide" id="slide-1" style="padding:64px;">
+  {_bg_container("slide-1")}
   <div class="slide-edit-layer">
     <div class="slide-object" data-slide-object data-oid="s1-mono" data-object-type="text" style="left:5%;top:8%;width:60%;">
       <button type="button" class="slide-object-move" aria-label="Move">⠿</button>
@@ -1035,6 +1057,7 @@ def synth_slides_html(name: str, source_url: str, hero_image: str = ''):
 </section>
 
 <section class="slide" id="slide-2" style="padding:64px;">
+  {_bg_container("slide-2")}
   <div class="slide-edit-layer">
     <div class="slide-object" data-slide-object data-oid="s2-mono" data-object-type="text" style="left:5%;top:8%;width:60%;">
       <button type="button" class="slide-object-move" aria-label="Move">⠿</button>

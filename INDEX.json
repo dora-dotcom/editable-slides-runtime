@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "generated": "2026-05-15",
-  "count": 40,
+  "count": 41,
   "presets": [
     {
       "id": "8-bit-orbit",
@@ -944,6 +944,32 @@
         "meta": "presets/scatterbrain/meta.json",
         "screenshot": "presets/scatterbrain/screenshot.png",
         "thumb": "presets/scatterbrain/thumb.png"
+      }
+    },
+    {
+      "id": "simular-ai",
+      "name": "Simular AI",
+      "vibe": [
+        "editorial",
+        "elegant"
+      ],
+      "mood": [
+        "inspired",
+        "calm"
+      ],
+      "category": "editorial",
+      "lightDark": "light",
+      "typography": {
+        "display": "Adamina",
+        "body": "Instrument Sans"
+      },
+      "source": "url:https://www.simular.ai/",
+      "paths": {
+        "template": "presets/simular-ai/template.html",
+        "preset": "presets/simular-ai/preset.md",
+        "meta": "presets/simular-ai/meta.json",
+        "screenshot": "presets/simular-ai/screenshot.png",
+        "thumb": "presets/simular-ai/thumb.png"
       }
     },
     {
