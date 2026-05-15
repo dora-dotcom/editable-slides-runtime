@@ -23,10 +23,14 @@ Usage:
 import argparse
 import colorsys
 import json
+import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
+import time
+import urllib.parse
 import urllib.request
 from collections import Counter, defaultdict
 from datetime import date
@@ -37,6 +41,12 @@ try:
     HAS_PIL = True
 except ImportError:
     HAS_PIL = False
+
+try:
+    import websocket  # websocket-client
+    HAS_WS = True
+except ImportError:
+    HAS_WS = False
 
 
 CHROME_CANDIDATES = [
@@ -96,6 +106,20 @@ def saturation(rgb):
     r, g, b = (c / 255.0 for c in rgb)
     _, s, _ = colorsys.rgb_to_hsv(r, g, b)
     return s
+
+
+def _parse_css_rgb_string(s):
+    """Parse a 'rgb(r, g, b)' or 'rgba(r, g, b, a)' string into an (r, g, b) tuple."""
+    if not s:
+        return None
+    m = RGB_RE.search(s)
+    if not m:
+        return None
+    try:
+        r, g, b = (int(float(m.group(i))) for i in (1, 2, 3))
+        return (min(255, max(0, r)), min(255, max(0, g)), min(255, max(0, b)))
+    except ValueError:
+        return None
 
 
 def color_distance(a, b):
@@ -480,6 +504,308 @@ def snapshot_url(url: str, out_path: Path, width=1280, height=720):
     return out_path.is_file()
 
 
+# ─── Chrome DevTools Protocol (computed styles + hero image) ──────────────────
+
+# JavaScript executed in the page context to gather computed styles for key
+# elements + identify the largest visible hero image. Returns a JSON string.
+CDP_PROBE_JS = r"""
+(() => {
+  const probe = (sel, el) => {
+    el = el || document.querySelector(sel);
+    if (!el) return null;
+    const cs = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    return {
+      sel: sel,
+      tag: el.tagName.toLowerCase(),
+      fontFamily: cs.fontFamily,
+      fontSize: cs.fontSize,
+      fontWeight: cs.fontWeight,
+      lineHeight: cs.lineHeight,
+      letterSpacing: cs.letterSpacing,
+      textTransform: cs.textTransform,
+      color: cs.color,
+      backgroundColor: cs.backgroundColor,
+      backgroundImage: cs.backgroundImage,
+      width: r.width,
+      height: r.height,
+    };
+  };
+
+  // Probe the most likely heading + body elements (selector lookup).
+  const targets = ['h1', 'h2', 'h3', 'p', 'body',
+                   '[class*="title" i]', '[class*="heading" i]', '[class*="hero" i]',
+                   '[class*="display" i]'];
+  const computed = {};
+  for (const t of targets) {
+    const v = probe(t);
+    if (v) computed[t] = v;
+  }
+
+  // Visual-prominence walk: find the largest visible text and the most common
+  // body text size in the first viewport. This catches sites where the hero
+  // headline is a <div> with class names that don't match our heuristics.
+  const inView = (r) => r.top < window.innerHeight && r.bottom > 0 && r.left < window.innerWidth && r.right > 0;
+  const all = document.body ? document.body.querySelectorAll('*') : [];
+  let heroDisplayEl = null;
+  let heroDisplaySize = 0;
+  const bodySizeBuckets = {}; // round(font-size) -> [count, sample el]
+  for (const el of all) {
+    // Only consider elements with direct text content
+    let hasOwnText = false;
+    for (const node of el.childNodes) {
+      if (node.nodeType === 3 && node.nodeValue && node.nodeValue.trim().length >= 2) {
+        hasOwnText = true;
+        break;
+      }
+    }
+    if (!hasOwnText) continue;
+    const r = el.getBoundingClientRect();
+    if (!inView(r) || r.width < 60 || r.height < 16) continue;
+    const cs = getComputedStyle(el);
+    const size = parseFloat(cs.fontSize) || 0;
+    if (size > heroDisplaySize) { heroDisplaySize = size; heroDisplayEl = el; }
+    if (size >= 13 && size <= 22) {
+      const key = Math.round(size);
+      if (!bodySizeBuckets[key]) bodySizeBuckets[key] = [0, el];
+      bodySizeBuckets[key][0] += 1;
+    }
+  }
+  if (heroDisplayEl) computed.heroDisplay = probe('heroDisplay', heroDisplayEl);
+  let heroBodyEl = null;
+  let bestBodyCount = 0;
+  for (const key of Object.keys(bodySizeBuckets)) {
+    const [count, el] = bodySizeBuckets[key];
+    if (count > bestBodyCount) { bestBodyCount = count; heroBodyEl = el; }
+  }
+  if (heroBodyEl) computed.heroBody = probe('heroBody', heroBodyEl);
+
+  // Find the biggest visible image on the page — likely the hero.
+  const imgs = Array.from(document.querySelectorAll('img'));
+  const visibleImgs = imgs
+    .map(img => {
+      const r = img.getBoundingClientRect();
+      return {
+        src: img.currentSrc || img.src,
+        alt: img.alt || '',
+        width: r.width,
+        height: r.height,
+        topInView: r.top < window.innerHeight && r.bottom > 0,
+        area: r.width * r.height,
+      };
+    })
+    .filter(i => i.topInView && i.width >= 240 && i.height >= 160 && i.src)
+    .sort((a, b) => b.area - a.area);
+  const heroImage = visibleImgs[0] || null;
+
+  // Also check for CSS background-image on hero-like sections.
+  const heroBgEls = Array.from(document.querySelectorAll(
+    'section, header, div[class*="hero" i], div[class*="banner" i]'
+  )).slice(0, 6);
+  const heroBgs = heroBgEls
+    .map(el => {
+      const cs = getComputedStyle(el);
+      const bi = cs.backgroundImage;
+      const r = el.getBoundingClientRect();
+      if (!bi || bi === 'none' || r.width < 300 || r.height < 200) return null;
+      const m = bi.match(/url\((['"]?)(.+?)\1\)/);
+      return m ? { url: m[2], width: r.width, height: r.height } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => (b.width * b.height) - (a.width * a.height));
+
+  // Collect all text colors actually rendered (sample headings + body)
+  const textColors = new Set();
+  for (const sel of ['h1', 'h2', 'h3', 'p', 'body', 'a', 'button']) {
+    const els = document.querySelectorAll(sel);
+    for (let i = 0; i < Math.min(els.length, 4); i++) {
+      textColors.add(getComputedStyle(els[i]).color);
+    }
+  }
+
+  return JSON.stringify({
+    computed,
+    heroImage,
+    heroBackground: heroBgs[0] || null,
+    textColors: Array.from(textColors),
+    documentColors: {
+      bodyBg: getComputedStyle(document.body).backgroundColor,
+      bodyFg: getComputedStyle(document.body).color,
+    },
+  });
+})()
+""".strip()
+
+
+def _find_free_port():
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(('127.0.0.1', 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+def cdp_extract(url: str, viewport=(1280, 720), wait_s: float = 8.0):
+    """Drive a headless Chrome via CDP to extract computed styles + hero image.
+
+    Returns dict (or None on failure):
+      {
+        'computed': { 'h1': {...}, 'h2': {...}, ... },
+        'heroImage': { 'src': '...', 'width': X, 'height': Y } | None,
+        'heroBackground': { 'url': '...', ... } | None,
+        'textColors': ['rgb(...)', ...],
+        'documentColors': { 'bodyBg': 'rgb(...)', 'bodyFg': 'rgb(...)' },
+      }
+    """
+    if not HAS_WS:
+        return None
+    chrome = find_chrome()
+    if not chrome:
+        return None
+
+    port = _find_free_port()
+    width, height = viewport
+    # Pose as a real desktop Chrome to bypass heuristic anti-headless checks
+    # (sites built with Webflow / Framer / etc. often refuse to render to
+    # HeadlessChrome user-agents).
+    real_ua = (
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+        'AppleWebKit/537.36 (KHTML, like Gecko) '
+        'Chrome/120.0.0.0 Safari/537.36'
+    )
+    proc = subprocess.Popen(
+        [
+            chrome,
+            '--headless=new',
+            '--disable-gpu',
+            '--no-sandbox',
+            '--no-first-run',
+            '--no-default-browser-check',
+            '--disable-extensions',
+            '--hide-scrollbars',
+            '--disable-blink-features=AutomationControlled',
+            f'--user-agent={real_ua}',
+            f'--remote-debugging-port={port}',
+            '--remote-allow-origins=*',
+            f'--window-size={width},{height}',
+            # Open the target URL directly so Chrome's normal page-load pipeline
+            # runs (rather than connecting to about:blank and navigating via
+            # CDP, which has been observed to leave Webflow/Framer SPAs unrendered).
+            url,
+        ],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+
+    try:
+        # Wait for Chrome's debugging endpoint to come up. The tabs list often
+        # includes Chrome's bundled extension pages (Hangouts, service workers,
+        # etc.); we want the actual http(s) page tab.
+        page_tab = None
+        for _ in range(60):
+            try:
+                with urllib.request.urlopen(f'http://127.0.0.1:{port}/json', timeout=1) as r:
+                    tabs = json.loads(r.read())
+                # Prefer a page-type tab whose URL is our target (or starts with http)
+                for t in tabs:
+                    if t.get('type') != 'page':
+                        continue
+                    u = t.get('url') or ''
+                    if u.startswith(('http://', 'https://')) and not u.startswith(('chrome-extension://', 'chrome://')):
+                        page_tab = t
+                        break
+                if page_tab and page_tab.get('webSocketDebuggerUrl'):
+                    break
+            except Exception:
+                pass
+            time.sleep(0.3)
+        if not page_tab:
+            return None
+
+        ws_url = page_tab.get('webSocketDebuggerUrl')
+        if not ws_url:
+            return None
+
+        ws = websocket.create_connection(ws_url, timeout=10)
+        msg_id = 0
+
+        def send(method, params=None, await_event=None, timeout=10):
+            nonlocal msg_id
+            msg_id += 1
+            payload = {'id': msg_id, 'method': method}
+            if params:
+                payload['params'] = params
+            ws.send(json.dumps(payload))
+            deadline = time.time() + timeout
+            ack = None
+            ev = None
+            while time.time() < deadline:
+                try:
+                    ws.settimeout(max(0.1, deadline - time.time()))
+                    frame = json.loads(ws.recv())
+                except Exception:
+                    continue
+                if frame.get('id') == msg_id:
+                    ack = frame.get('result')
+                    if not await_event:
+                        return ack
+                elif await_event and frame.get('method') == await_event:
+                    ev = frame
+                    if ack is not None:
+                        return ack
+            return ack
+
+        send('Page.enable')
+        send('Runtime.enable')
+        # Page already loading via launch URL — just give it time to finish
+        time.sleep(wait_s)
+
+        result = send('Runtime.evaluate', {
+            'expression': CDP_PROBE_JS,
+            'returnByValue': True,
+            'awaitPromise': True,
+        }, timeout=15)
+        ws.close()
+        if not result:
+            return None
+        rv = result.get('result', {})
+        val = rv.get('value')
+        if not val:
+            return None
+        try:
+            return json.loads(val)
+        except json.JSONDecodeError:
+            return None
+    finally:
+        try:
+            proc.terminate()
+            proc.wait(timeout=5)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
+
+# ─── Hero image download ──────────────────────────────────────────────────────
+
+def download_image(src_url: str, page_url: str, dst_path: Path) -> bool:
+    """Download an image to dst_path. Handles relative URLs and data: URLs."""
+    if src_url.startswith('data:'):
+        # data: URLs — skip (too small typically, and complex to decode)
+        return False
+    abs_url = urllib.parse.urljoin(page_url, src_url)
+    try:
+        req = urllib.request.Request(abs_url, headers={
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+        })
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = r.read(20 * 1024 * 1024)  # cap at 20MB
+        dst_path.write_bytes(data)
+        return dst_path.stat().st_size > 1024
+    except Exception:
+        return False
+
+
 def image_palette_from_screenshot(snapshot_path: Path, n_colors: int = 8):
     """Sample dominant colors from a screenshot.
 
@@ -594,10 +920,20 @@ body {{ margin: 0; font-family: var(--font-body); background: var(--uc-paper); c
 """
 
 
-def synth_slides_html(name: str, source_url: str):
-    """Three placeholder slides demonstrating the extracted style."""
+def synth_slides_html(name: str, source_url: str, hero_image: str = ''):
+    """Three placeholder slides demonstrating the extracted style.
+
+    If `hero_image` is a relative filename (e.g. 'hero.jpg') it is referenced
+    as a background-image on slide-0 with a faint paper overlay for legibility.
+    """
+    hero_bg_style = ''
+    if hero_image:
+        hero_bg_style = (
+            f"background-image:linear-gradient(rgba(255,255,255,0.55),rgba(255,255,255,0.85)),url('{hero_image}');"
+            "background-size:cover;background-position:center;"
+        )
     return f'''
-<section class="slide visible" id="slide-0" style="padding:64px;">
+<section class="slide visible" id="slide-0" style="padding:64px;{hero_bg_style}">
   <div class="slide-edit-layer">
     <div class="slide-object" data-slide-object data-oid="s0-meta" data-object-type="text" style="left:5%;top:8%;width:60%;">
       <button type="button" class="slide-object-move" aria-label="Move">⠿</button>
@@ -833,6 +1169,23 @@ def main():
     print(f'Creating presets/{args.id}/ ...')
     preset_dir.mkdir(parents=True)
 
+    # 0. Computed styles + hero image via Chrome DevTools Protocol.
+    print('Probing computed styles via CDP ...')
+    cdp = cdp_extract(args.url) if HAS_WS else None
+    if cdp:
+        print(f'  Got {len(cdp.get("computed", {}))} probed elements')
+        h1c = cdp.get('computed', {}).get('h1') or {}
+        if h1c:
+            print(f'  h1 computed: font={h1c.get("fontFamily","")[:60]} size={h1c.get("fontSize")} weight={h1c.get("fontWeight")}')
+        hero = cdp.get('heroImage')
+        if hero:
+            print(f'  Hero <img>: {hero["src"][:80]}  ({int(hero["width"])}x{int(hero["height"])})')
+        bg = cdp.get('heroBackground')
+        if bg:
+            print(f'  Hero bg-img: {bg["url"][:80]}')
+    else:
+        print('  (CDP unavailable or failed — falling back to regex)')
+
     # 1. Snapshot the URL FIRST — used for image palette + reference
     src_png = preset_dir / '_source.png'
     print(f'Snapshotting {args.url} -> _source.png ...')
@@ -843,37 +1196,118 @@ def main():
     print('Extracting palette (CSS) ...')
     css_counts = collect_colors(html)
 
+    # 2b. CDP-rendered colors (highest authority — these are actually painted)
+    cdp_counts = Counter()
+    if cdp:
+        doc = cdp.get('documentColors', {}) or {}
+        for c in (doc.get('bodyBg'), doc.get('bodyFg')):
+            if c:
+                rgb = _parse_css_rgb_string(c)
+                if rgb:
+                    cdp_counts[rgb] += 30  # heavy weight — document-level
+        for c in cdp.get('textColors', []) or []:
+            rgb = _parse_css_rgb_string(c)
+            if rgb:
+                cdp_counts[rgb] += 10
+
     # 3. Image-sampled palette from the screenshot
     print('Sampling palette (screenshot) ...')
     img_counts = image_palette_from_screenshot(src_png) if snap_ok else Counter()
     if img_counts:
-        # Image-pixel counts dwarf CSS-occurrence counts; normalize so they compete
         max_img = max(img_counts.values())
         max_css = max(css_counts.values()) if css_counts else 1
-        scale = max(1, max_css / max(1, max_img)) * 4  # image colors get a slight visual-prominence boost
+        scale = max(1, max_css / max(1, max_img)) * 4
         scaled_img = Counter()
         for rgb, c in img_counts.items():
             scaled_img[rgb] = int(c * scale)
-        merged = css_counts + scaled_img
+        merged = css_counts + scaled_img + cdp_counts
         print(f'  Image-sampled: {len(img_counts)} unique colors')
     else:
-        merged = css_counts
+        merged = css_counts + cdp_counts
+    if cdp_counts:
+        print(f'  CDP-rendered colors: {len(cdp_counts)} added')
 
     clustered = cluster_colors(merged)
     palette = classify_palette(clustered)
     print(f'  Final palette: {", ".join(f"{k}={rgb_to_hex(v)}" for k, v in palette.items())}')
 
-    # 4. Context-aware font extraction
+    # 4. Context-aware font extraction (regex)
     print('Extracting fonts (selector-aware) ...')
     display, body, fonts_link, font_debug = extract_fonts(html)
-    print(f'  Display: {display}    Body: {body}')
     if font_debug['display_top']:
         print(f'  Display candidates (selector + font-size weighted): {font_debug["display_top"]}')
     if font_debug['body_top']:
         print(f'  Body candidates:    {font_debug["body_top"]}')
 
-    # 5. Heading typography hints
+    # 4b. CDP overrides — when getComputedStyle returns a concrete first family,
+    #     it's more authoritative than regex frequency.
     h1_props = extract_h1_typography(html)
+    cdp_display = None
+    cdp_body = None
+    if cdp:
+        cc = cdp.get('computed', {})
+        # Prefer the heroDisplay element (largest-font visible text), fall back
+        # to h1, then to title/heading selectors.
+        h1c = (cc.get('heroDisplay')
+               or cc.get('h1')
+               or cc.get('[class*="title" i]')
+               or cc.get('[class*="heading" i]')
+               or cc.get('[class*="hero" i]'))
+        body_cs = (cc.get('heroBody')
+                   or cc.get('p')
+                   or cc.get('body'))
+
+        def _ok_family(family_value):
+            f = _first_family(family_value or '')
+            if not f:
+                return ''
+            if f.lower() in ('system-ui', 'sans-serif', 'serif', 'monospace', 'ui-serif',
+                             'ui-sans-serif', '-apple-system', 'blinkmacsystemfont'):
+                return ''
+            return f
+
+        if h1c:
+            cd = _ok_family(h1c.get('fontFamily'))
+            if cd:
+                cdp_display = cd
+                if cd != display:
+                    print(f'  CDP override: display {display} → {cd}')
+                display = cd
+        if body_cs:
+            cb = _ok_family(body_cs.get('fontFamily'))
+            if cb and cb != display:
+                cdp_body = cb
+                if cb != body:
+                    print(f'  CDP override: body {body} → {cb}')
+                body = cb
+
+        # Pull h1 numeric properties from CDP too — these are the rendered values
+        if h1c:
+            cdp_h1 = {}
+            if h1c.get('fontSize'): cdp_h1['font-size'] = h1c['fontSize']
+            if h1c.get('fontWeight'): cdp_h1['font-weight'] = h1c['fontWeight']
+            if h1c.get('lineHeight'): cdp_h1['line-height'] = h1c['lineHeight']
+            if h1c.get('letterSpacing') and h1c['letterSpacing'] != 'normal':
+                cdp_h1['letter-spacing'] = h1c['letterSpacing']
+            if h1c.get('textTransform') and h1c['textTransform'] != 'none':
+                cdp_h1['text-transform'] = h1c['textTransform']
+            if cdp_h1:
+                h1_props = cdp_h1
+
+        # Re-build fonts_link if CDP changed any picks
+        if cdp_display or cdp_body:
+            wanted = []
+            for f in (display, body):
+                if f and f not in wanted:
+                    wanted.append(f)
+            if wanted:
+                families_param = '&'.join(
+                    'family=' + g.replace(' ', '+') + ':wght@400;500;600;700;800'
+                    for g in wanted[:3]
+                )
+                fonts_link = f'https://fonts.googleapis.com/css2?{families_param}&display=swap'
+
+    print(f'  Display: {display}    Body: {body}')
     if h1_props:
         print(f'  H1 typography: {h1_props}')
 
@@ -881,8 +1315,32 @@ def main():
     vibe, mood, category, _ = guess_vibe_mood_category(palette, display)
     print(f'  Classified: vibe={vibe}  mood={mood}  category={category}  lightDark={light_dark}')
 
+    # Download hero image (if CDP found one) and reference it from slide 0
+    hero_filename = ''
+    if cdp:
+        hero_src = None
+        if cdp.get('heroImage'):
+            hero_src = cdp['heroImage']['src']
+        elif cdp.get('heroBackground'):
+            hero_src = cdp['heroBackground']['url']
+        if hero_src:
+            # Best-effort extension detection
+            ext = '.jpg'
+            lower = hero_src.lower().split('?')[0]
+            for cand in ('.png', '.jpg', '.jpeg', '.webp', '.gif', '.avif'):
+                if lower.endswith(cand):
+                    ext = '.jpg' if cand == '.jpeg' else cand
+                    break
+            hero_path = preset_dir / f'hero{ext}'
+            print(f'Downloading hero image -> {hero_path.name} ...')
+            if download_image(hero_src, args.url, hero_path):
+                hero_filename = hero_path.name
+                print(f'  OK ({hero_path.stat().st_size:,} bytes)')
+            else:
+                print('  (skipped)')
+
     theme_css = synth_theme_css(palette, fonts_link, display, body, h1_props=h1_props)
-    slides_html = synth_slides_html(name, args.url)
+    slides_html = synth_slides_html(name, args.url, hero_image=hero_filename)
     template_html = build_template(args.id, f'{name} — Editable Slide Template (draft)',
                                     args.id, fonts_link, theme_css, slides_html,
                                     runtime_dir=root / 'runtime')

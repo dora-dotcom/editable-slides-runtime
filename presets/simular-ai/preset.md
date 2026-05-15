@@ -6,7 +6,7 @@
 
 **Typography (extracted):**
 - Display: `Adamina`
-- Body: `Manrope`
+- Body: `Instrument Sans`
 
 **Colors (clustered from source):**
 ```css
