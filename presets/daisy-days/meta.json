@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "id": "daisy-days",
+  "name": "Daisy Days",
+  "vibe": [
+    "playful",
+    "warm",
+    "handwritten",
+    "indie"
+  ],
+  "mood": [
+    "inspired",
+    "excited"
+  ],
+  "category": "playful",
+  "lightDark": "light",
+  "typography": {
+    "display": "Fredoka One",
+    "body": "Quicksand",
+    "source": "google-fonts"
+  },
+  "colors": {
+    "cream": "#F5F0E6",
+    "turquoise": "#7ECDC0",
+    "pink": "#F7C8D4",
+    "butter": "#FDE68A",
+    "mint": "#A8E6CF",
+    "lavender": "#D4A5E8",
+    "peach": "#FFCBA4",
+    "sky": "#A8D8F0",
+    "coral": "#F8635F",
+    "text": "#2D2D2D"
+  },
+  "capabilities": {
+    "pdfExport": true,
+    "imageUpload": true
+  },
+  "source": {
+    "origin": "zarazhangrui/beautiful-html-templates",
+    "license": "MIT",
+    "originalUrl": "https://github.com/zarazhangrui/beautiful-html-templates/blob/main/templates/daisy-days/template.html",
+    "originalPath": "templates/daisy-days/template.html"
+  },
+  "ported": {
+    "by": "frontend-slides-editable",
+    "date": "2026-05-15",
+    "notes": "Ported 3 slides (cover, three-cards, lovely afternoon)."
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "id": "sakura-chroma",
+  "name": "Sakura Chroma",
+  "vibe": [
+    "retro",
+    "editorial",
+    "playful",
+    "energetic"
+  ],
+  "mood": [
+    "excited",
+    "inspired"
+  ],
+  "category": "retro-zine",
+  "lightDark": "light",
+  "typography": {
+    "display": "Big Shoulders Display",
+    "body": "Albert Sans",
+    "source": "google-fonts"
+  },
+  "colors": {
+    "paper": "#F1E6CB",
+    "paper-dk": "#E5D6B0",
+    "ink": "#3A2516",
+    "red": "#E5392A",
+    "pink": "#E54489",
+    "orange": "#F09131",
+    "green": "#3D9F47",
+    "blue": "#3F8BC4"
+  },
+  "capabilities": {
+    "pdfExport": true,
+    "imageUpload": true
+  },
+  "source": {
+    "origin": "zarazhangrui/beautiful-html-templates",
+    "license": "MIT",
+    "originalUrl": "https://github.com/zarazhangrui/beautiful-html-templates/blob/main/templates/sakura-chroma/template.html",
+    "originalPath": "templates/sakura-chroma/template.html"
+  },
+  "ported": {
+    "by": "frontend-slides-editable",
+    "date": "2026-05-15",
+    "notes": "Ported 3 slides (cassette cover, side-A tracklist, side-B end)."
+  }
+}

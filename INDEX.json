@@ -1,8 +1,64 @@
 {
   "schemaVersion": 1,
   "generated": "2026-05-15",
-  "count": 17,
+  "count": 40,
   "presets": [
+    {
+      "id": "8-bit-orbit",
+      "name": "8-Bit Orbit",
+      "vibe": [
+        "retro",
+        "futuristic",
+        "experimental",
+        "energetic"
+      ],
+      "mood": [
+        "excited",
+        "inspired"
+      ],
+      "category": "retro-pixel",
+      "lightDark": "dark",
+      "typography": {
+        "display": "Tektur",
+        "body": "Chakra Petch"
+      },
+      "source": "zarazhangrui/beautiful-html-templates",
+      "paths": {
+        "template": "presets/8-bit-orbit/template.html",
+        "preset": "presets/8-bit-orbit/preset.md",
+        "meta": "presets/8-bit-orbit/meta.json",
+        "screenshot": "presets/8-bit-orbit/screenshot.png",
+        "thumb": "presets/8-bit-orbit/thumb.png"
+      }
+    },
+    {
+      "id": "biennale-yellow",
+      "name": "Biennale Yellow",
+      "vibe": [
+        "bold",
+        "editorial",
+        "elegant",
+        "warm"
+      ],
+      "mood": [
+        "inspired",
+        "impressed"
+      ],
+      "category": "bold-poster",
+      "lightDark": "light",
+      "typography": {
+        "display": "Instrument Serif",
+        "body": "Archivo"
+      },
+      "source": "zarazhangrui/beautiful-html-templates",
+      "paths": {
+        "template": "presets/biennale-yellow/template.html",
+        "preset": "presets/biennale-yellow/preset.md",
+        "meta": "presets/biennale-yellow/meta.json",
+        "screenshot": "presets/biennale-yellow/screenshot.png",
+        "thumb": "presets/biennale-yellow/thumb.png"
+      }
+    },
     {
       "id": "block-frame",
       "name": "Block Frame",
@@ -87,6 +143,146 @@
       }
     },
     {
+      "id": "broadside",
+      "name": "Broadside",
+      "vibe": [
+        "bold",
+        "editorial",
+        "energetic",
+        "professional"
+      ],
+      "mood": [
+        "impressed",
+        "excited"
+      ],
+      "category": "bold-poster",
+      "lightDark": "dark",
+      "typography": {
+        "display": "Barlow",
+        "body": "Barlow"
+      },
+      "source": "zarazhangrui/beautiful-html-templates",
+      "paths": {
+        "template": "presets/broadside/template.html",
+        "preset": "presets/broadside/preset.md",
+        "meta": "presets/broadside/meta.json",
+        "screenshot": "presets/broadside/screenshot.png",
+        "thumb": "presets/broadside/thumb.png"
+      }
+    },
+    {
+      "id": "capsule",
+      "name": "Capsule",
+      "vibe": [
+        "modular",
+        "playful",
+        "warm",
+        "elegant"
+      ],
+      "mood": [
+        "inspired",
+        "calm"
+      ],
+      "category": "modular",
+      "lightDark": "light",
+      "typography": {
+        "display": "Bodoni Moda",
+        "body": "Space Grotesk"
+      },
+      "source": "zarazhangrui/beautiful-html-templates",
+      "paths": {
+        "template": "presets/capsule/template.html",
+        "preset": "presets/capsule/preset.md",
+        "meta": "presets/capsule/meta.json",
+        "screenshot": "presets/capsule/screenshot.png",
+        "thumb": "presets/capsule/thumb.png"
+      }
+    },
+    {
+      "id": "cartesian",
+      "name": "Cartesian",
+      "vibe": [
+        "editorial",
+        "elegant",
+        "calm",
+        "warm",
+        "academic"
+      ],
+      "mood": [
+        "calm",
+        "inspired"
+      ],
+      "category": "editorial",
+      "lightDark": "light",
+      "typography": {
+        "display": "Playfair Display",
+        "body": "Inter"
+      },
+      "source": "zarazhangrui/beautiful-html-templates",
+      "paths": {
+        "template": "presets/cartesian/template.html",
+        "preset": "presets/cartesian/preset.md",
+        "meta": "presets/cartesian/meta.json",
+        "screenshot": "presets/cartesian/screenshot.png",
+        "thumb": "presets/cartesian/thumb.png"
+      }
+    },
+    {
+      "id": "cobalt-grid",
+      "name": "Cobalt Grid",
+      "vibe": [
+        "editorial",
+        "futuristic",
+        "academic",
+        "minimal"
+      ],
+      "mood": [
+        "calm",
+        "impressed"
+      ],
+      "category": "editorial",
+      "lightDark": "light",
+      "typography": {
+        "display": "Newsreader",
+        "body": "Hanken Grotesk"
+      },
+      "source": "zarazhangrui/beautiful-html-templates",
+      "paths": {
+        "template": "presets/cobalt-grid/template.html",
+        "preset": "presets/cobalt-grid/preset.md",
+        "meta": "presets/cobalt-grid/meta.json",
+        "screenshot": "presets/cobalt-grid/screenshot.png",
+        "thumb": "presets/cobalt-grid/thumb.png"
+      }
+    },
+    {
+      "id": "coral",
+      "name": "Coral",
+      "vibe": [
+        "bold",
+        "editorial",
+        "elegant"
+      ],
+      "mood": [
+        "impressed",
+        "inspired"
+      ],
+      "category": "bold-poster",
+      "lightDark": "dark",
+      "typography": {
+        "display": "Bebas Neue",
+        "body": "Inter"
+      },
+      "source": "zarazhangrui/beautiful-html-templates",
+      "paths": {
+        "template": "presets/coral/template.html",
+        "preset": "presets/coral/preset.md",
+        "meta": "presets/coral/meta.json",
+        "screenshot": "presets/coral/screenshot.png",
+        "thumb": "presets/coral/thumb.png"
+      }
+    },
+    {
       "id": "creative-voltage",
       "name": "Creative Voltage",
       "vibe": [
@@ -112,6 +308,34 @@
         "meta": "presets/creative-voltage/meta.json",
         "screenshot": "presets/creative-voltage/screenshot.png",
         "thumb": "presets/creative-voltage/thumb.png"
+      }
+    },
+    {
+      "id": "daisy-days",
+      "name": "Daisy Days",
+      "vibe": [
+        "playful",
+        "warm",
+        "handwritten",
+        "indie"
+      ],
+      "mood": [
+        "inspired",
+        "excited"
+      ],
+      "category": "playful",
+      "lightDark": "light",
+      "typography": {
+        "display": "Fredoka One",
+        "body": "Quicksand"
+      },
+      "source": "zarazhangrui/beautiful-html-templates",
+      "paths": {
+        "template": "presets/daisy-days/template.html",
+        "preset": "presets/daisy-days/preset.md",
+        "meta": "presets/daisy-days/meta.json",
+        "screenshot": "presets/daisy-days/screenshot.png",
+        "thumb": "presets/daisy-days/thumb.png"
       }
     },
     {
@@ -142,6 +366,62 @@
       }
     },
     {
+      "id": "editorial-forest",
+      "name": "Editorial Forest",
+      "vibe": [
+        "editorial",
+        "elegant",
+        "calm",
+        "warm"
+      ],
+      "mood": [
+        "calm",
+        "inspired"
+      ],
+      "category": "editorial",
+      "lightDark": "light",
+      "typography": {
+        "display": "Source Serif 4",
+        "body": "Source Serif 4"
+      },
+      "source": "zarazhangrui/beautiful-html-templates",
+      "paths": {
+        "template": "presets/editorial-forest/template.html",
+        "preset": "presets/editorial-forest/preset.md",
+        "meta": "presets/editorial-forest/meta.json",
+        "screenshot": "presets/editorial-forest/screenshot.png",
+        "thumb": "presets/editorial-forest/thumb.png"
+      }
+    },
+    {
+      "id": "editorial-tri-tone",
+      "name": "Editorial Tri-Tone",
+      "vibe": [
+        "editorial",
+        "warm",
+        "energetic",
+        "elegant"
+      ],
+      "mood": [
+        "inspired",
+        "impressed"
+      ],
+      "category": "editorial",
+      "lightDark": "light",
+      "typography": {
+        "display": "Instrument Serif",
+        "body": "Bricolage Grotesque"
+      },
+      "source": "zarazhangrui/beautiful-html-templates",
+      "paths": {
+        "template": "presets/editorial-tri-tone/template.html",
+        "preset": "presets/editorial-tri-tone/preset.md",
+        "meta": "presets/editorial-tri-tone/meta.json",
+        "screenshot": "presets/editorial-tri-tone/screenshot.png",
+        "thumb": "presets/editorial-tri-tone/thumb.png"
+      }
+    },
+    {
       "id": "electric-studio",
       "name": "Electric Studio",
       "vibe": [
@@ -166,6 +446,91 @@
         "meta": "presets/electric-studio/meta.json",
         "screenshot": "presets/electric-studio/screenshot.png",
         "thumb": "presets/electric-studio/thumb.png"
+      }
+    },
+    {
+      "id": "grove",
+      "name": "Grove",
+      "vibe": [
+        "editorial",
+        "calm",
+        "warm",
+        "elegant"
+      ],
+      "mood": [
+        "calm",
+        "inspired"
+      ],
+      "category": "mid-century",
+      "lightDark": "dark",
+      "typography": {
+        "display": "Playfair Display",
+        "body": "Jost"
+      },
+      "source": "zarazhangrui/beautiful-html-templates",
+      "paths": {
+        "template": "presets/grove/template.html",
+        "preset": "presets/grove/preset.md",
+        "meta": "presets/grove/meta.json",
+        "screenshot": "presets/grove/screenshot.png",
+        "thumb": "presets/grove/thumb.png"
+      }
+    },
+    {
+      "id": "long-table",
+      "name": "Long Table",
+      "vibe": [
+        "editorial",
+        "warm",
+        "elegant",
+        "indie"
+      ],
+      "mood": [
+        "inspired",
+        "calm",
+        "impressed"
+      ],
+      "category": "editorial",
+      "lightDark": "light",
+      "typography": {
+        "display": "Bricolage Grotesque",
+        "body": "Fraunces"
+      },
+      "source": "zarazhangrui/beautiful-html-templates",
+      "paths": {
+        "template": "presets/long-table/template.html",
+        "preset": "presets/long-table/preset.md",
+        "meta": "presets/long-table/meta.json",
+        "screenshot": "presets/long-table/screenshot.png",
+        "thumb": "presets/long-table/thumb.png"
+      }
+    },
+    {
+      "id": "mat",
+      "name": "Mat",
+      "vibe": [
+        "editorial",
+        "warm",
+        "calm",
+        "elegant"
+      ],
+      "mood": [
+        "calm",
+        "inspired"
+      ],
+      "category": "mid-century",
+      "lightDark": "dark",
+      "typography": {
+        "display": "Bricolage Grotesque",
+        "body": "DM Sans"
+      },
+      "source": "zarazhangrui/beautiful-html-templates",
+      "paths": {
+        "template": "presets/mat/template.html",
+        "preset": "presets/mat/preset.md",
+        "meta": "presets/mat/meta.json",
+        "screenshot": "presets/mat/screenshot.png",
+        "thumb": "presets/mat/thumb.png"
       }
     },
     {
@@ -194,6 +559,33 @@
         "meta": "presets/monochrome/meta.json",
         "screenshot": "presets/monochrome/screenshot.png",
         "thumb": "presets/monochrome/thumb.png"
+      }
+    },
+    {
+      "id": "neo-grid-bold",
+      "name": "Neo-Grid Bold",
+      "vibe": [
+        "bold",
+        "editorial",
+        "minimal"
+      ],
+      "mood": [
+        "impressed",
+        "calm"
+      ],
+      "category": "brutalism",
+      "lightDark": "light",
+      "typography": {
+        "display": "Space Grotesk",
+        "body": "Space Grotesk"
+      },
+      "source": "zarazhangrui/beautiful-html-templates",
+      "paths": {
+        "template": "presets/neo-grid-bold/template.html",
+        "preset": "presets/neo-grid-bold/preset.md",
+        "meta": "presets/neo-grid-bold/meta.json",
+        "screenshot": "presets/neo-grid-bold/screenshot.png",
+        "thumb": "presets/neo-grid-bold/thumb.png"
       }
     },
     {
@@ -305,6 +697,145 @@
       }
     },
     {
+      "id": "peoples-platform",
+      "name": "People's Platform",
+      "vibe": [
+        "bold",
+        "activist",
+        "energetic",
+        "warm"
+      ],
+      "mood": [
+        "excited",
+        "inspired"
+      ],
+      "category": "activist",
+      "lightDark": "light",
+      "typography": {
+        "display": "Alfa Slab One",
+        "body": "Archivo Narrow"
+      },
+      "source": "zarazhangrui/beautiful-html-templates",
+      "paths": {
+        "template": "presets/peoples-platform/template.html",
+        "preset": "presets/peoples-platform/preset.md",
+        "meta": "presets/peoples-platform/meta.json",
+        "screenshot": "presets/peoples-platform/screenshot.png",
+        "thumb": "presets/peoples-platform/thumb.png"
+      }
+    },
+    {
+      "id": "pin-and-paper",
+      "name": "Pin & Paper",
+      "vibe": [
+        "editorial",
+        "handwritten",
+        "warm",
+        "indie"
+      ],
+      "mood": [
+        "inspired",
+        "calm"
+      ],
+      "category": "handwriting",
+      "lightDark": "light",
+      "typography": {
+        "display": "Space Grotesk",
+        "body": "Space Grotesk"
+      },
+      "source": "zarazhangrui/beautiful-html-templates",
+      "paths": {
+        "template": "presets/pin-and-paper/template.html",
+        "preset": "presets/pin-and-paper/preset.md",
+        "meta": "presets/pin-and-paper/meta.json",
+        "screenshot": "presets/pin-and-paper/screenshot.png",
+        "thumb": "presets/pin-and-paper/thumb.png"
+      }
+    },
+    {
+      "id": "pink-script",
+      "name": "Pink Script",
+      "vibe": [
+        "bold",
+        "elegant",
+        "luxe"
+      ],
+      "mood": [
+        "impressed",
+        "inspired"
+      ],
+      "category": "bold-poster",
+      "lightDark": "dark",
+      "typography": {
+        "display": "DM Serif Display",
+        "body": "Inter"
+      },
+      "source": "zarazhangrui/beautiful-html-templates",
+      "paths": {
+        "template": "presets/pink-script/template.html",
+        "preset": "presets/pink-script/preset.md",
+        "meta": "presets/pink-script/meta.json",
+        "screenshot": "presets/pink-script/screenshot.png",
+        "thumb": "presets/pink-script/thumb.png"
+      }
+    },
+    {
+      "id": "playful",
+      "name": "Playful",
+      "vibe": [
+        "playful",
+        "warm",
+        "energetic",
+        "indie"
+      ],
+      "mood": [
+        "inspired",
+        "excited"
+      ],
+      "category": "playful",
+      "lightDark": "light",
+      "typography": {
+        "display": "Syne",
+        "body": "Space Grotesk"
+      },
+      "source": "zarazhangrui/beautiful-html-templates",
+      "paths": {
+        "template": "presets/playful/template.html",
+        "preset": "presets/playful/preset.md",
+        "meta": "presets/playful/meta.json",
+        "screenshot": "presets/playful/screenshot.png",
+        "thumb": "presets/playful/thumb.png"
+      }
+    },
+    {
+      "id": "raw-grid",
+      "name": "Raw Grid",
+      "vibe": [
+        "bold",
+        "experimental",
+        "brutalism",
+        "energetic"
+      ],
+      "mood": [
+        "excited",
+        "impressed"
+      ],
+      "category": "brutalism",
+      "lightDark": "light",
+      "typography": {
+        "display": "Inter",
+        "body": "Inter"
+      },
+      "source": "zarazhangrui/beautiful-html-templates",
+      "paths": {
+        "template": "presets/raw-grid/template.html",
+        "preset": "presets/raw-grid/preset.md",
+        "meta": "presets/raw-grid/meta.json",
+        "screenshot": "presets/raw-grid/screenshot.png",
+        "thumb": "presets/raw-grid/thumb.png"
+      }
+    },
+    {
       "id": "retro-windows",
       "name": "Retro Windows",
       "vibe": [
@@ -329,6 +860,62 @@
         "meta": "presets/retro-windows/meta.json",
         "screenshot": "presets/retro-windows/screenshot.png",
         "thumb": "presets/retro-windows/thumb.png"
+      }
+    },
+    {
+      "id": "retro-zine",
+      "name": "Retro Zine",
+      "vibe": [
+        "retro",
+        "editorial",
+        "warm",
+        "indie"
+      ],
+      "mood": [
+        "inspired",
+        "calm"
+      ],
+      "category": "retro-zine",
+      "lightDark": "light",
+      "typography": {
+        "display": "Bebas Neue",
+        "body": "Caveat"
+      },
+      "source": "zarazhangrui/beautiful-html-templates",
+      "paths": {
+        "template": "presets/retro-zine/template.html",
+        "preset": "presets/retro-zine/preset.md",
+        "meta": "presets/retro-zine/meta.json",
+        "screenshot": "presets/retro-zine/screenshot.png",
+        "thumb": "presets/retro-zine/thumb.png"
+      }
+    },
+    {
+      "id": "sakura-chroma",
+      "name": "Sakura Chroma",
+      "vibe": [
+        "retro",
+        "editorial",
+        "playful",
+        "energetic"
+      ],
+      "mood": [
+        "excited",
+        "inspired"
+      ],
+      "category": "retro-zine",
+      "lightDark": "light",
+      "typography": {
+        "display": "Big Shoulders Display",
+        "body": "Albert Sans"
+      },
+      "source": "zarazhangrui/beautiful-html-templates",
+      "paths": {
+        "template": "presets/sakura-chroma/template.html",
+        "preset": "presets/sakura-chroma/preset.md",
+        "meta": "presets/sakura-chroma/meta.json",
+        "screenshot": "presets/sakura-chroma/screenshot.png",
+        "thumb": "presets/sakura-chroma/thumb.png"
       }
     },
     {
@@ -384,6 +971,61 @@
         "meta": "presets/split-pastel/meta.json",
         "screenshot": "presets/split-pastel/screenshot.png",
         "thumb": "presets/split-pastel/thumb.png"
+      }
+    },
+    {
+      "id": "stencil-tablet",
+      "name": "Stencil & Tablet",
+      "vibe": [
+        "editorial",
+        "minimal",
+        "warm",
+        "academic"
+      ],
+      "mood": [
+        "impressed",
+        "calm"
+      ],
+      "category": "minimal",
+      "lightDark": "light",
+      "typography": {
+        "display": "Stardos Stencil",
+        "body": "Inter"
+      },
+      "source": "zarazhangrui/beautiful-html-templates",
+      "paths": {
+        "template": "presets/stencil-tablet/template.html",
+        "preset": "presets/stencil-tablet/preset.md",
+        "meta": "presets/stencil-tablet/meta.json",
+        "screenshot": "presets/stencil-tablet/screenshot.png",
+        "thumb": "presets/stencil-tablet/thumb.png"
+      }
+    },
+    {
+      "id": "studio",
+      "name": "Studio",
+      "vibe": [
+        "bold",
+        "professional",
+        "energetic"
+      ],
+      "mood": [
+        "impressed",
+        "excited"
+      ],
+      "category": "bold-poster",
+      "lightDark": "dark",
+      "typography": {
+        "display": "Barlow",
+        "body": "Barlow"
+      },
+      "source": "zarazhangrui/beautiful-html-templates",
+      "paths": {
+        "template": "presets/studio/template.html",
+        "preset": "presets/studio/preset.md",
+        "meta": "presets/studio/meta.json",
+        "screenshot": "presets/studio/screenshot.png",
+        "thumb": "presets/studio/thumb.png"
       }
     },
     {

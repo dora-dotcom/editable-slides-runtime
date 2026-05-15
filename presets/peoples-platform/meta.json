@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "id": "peoples-platform",
+  "name": "People's Platform",
+  "vibe": [
+    "bold",
+    "activist",
+    "energetic",
+    "warm"
+  ],
+  "mood": [
+    "excited",
+    "inspired"
+  ],
+  "category": "activist",
+  "lightDark": "light",
+  "typography": {
+    "display": "Alfa Slab One",
+    "body": "Archivo Narrow",
+    "source": "google-fonts"
+  },
+  "colors": {
+    "blue": "#2C2CDC",
+    "blue-deep": "#1B1BB0",
+    "orange": "#F2A03A",
+    "orange-deep": "#E89321",
+    "red": "#E83A2A",
+    "red-deep": "#B7281C",
+    "cream": "#F4E9D6",
+    "paper": "#F5F2EA",
+    "ink": "#0F1015"
+  },
+  "capabilities": {
+    "pdfExport": true,
+    "imageUpload": true
+  },
+  "source": {
+    "origin": "zarazhangrui/beautiful-html-templates",
+    "license": "MIT",
+    "originalUrl": "https://github.com/zarazhangrui/beautiful-html-templates/blob/main/templates/peoples-platform/template.html",
+    "originalPath": "templates/peoples-platform/template.html"
+  },
+  "ported": {
+    "by": "frontend-slides-editable",
+    "date": "2026-05-15",
+    "notes": "Ported 3 slides (cover, manifesto-blue, join-in)."
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "id": "neo-grid-bold",
+  "name": "Neo-Grid Bold",
+  "vibe": [
+    "bold",
+    "editorial",
+    "minimal"
+  ],
+  "mood": [
+    "impressed",
+    "calm"
+  ],
+  "category": "brutalism",
+  "lightDark": "light",
+  "typography": {
+    "display": "Space Grotesk",
+    "body": "Space Grotesk",
+    "source": "google-fonts"
+  },
+  "colors": {
+    "bg": "#ECECE8",
+    "ink": "#0A0A0A",
+    "paper": "#F5F4EF",
+    "accent": "#E6FF3D",
+    "muted": "#8A8A85"
+  },
+  "capabilities": {
+    "pdfExport": true,
+    "imageUpload": true
+  },
+  "source": {
+    "origin": "zarazhangrui/beautiful-html-templates",
+    "license": "MIT",
+    "originalUrl": "https://github.com/zarazhangrui/beautiful-html-templates/blob/main/templates/neo-grid-bold/template.html",
+    "originalPath": "templates/neo-grid-bold/template.html"
+  },
+  "ported": {
+    "by": "frontend-slides-editable",
+    "date": "2026-05-15",
+    "notes": "Ported 3 of 12 slides (cover, stats, features)."
+  }
+}

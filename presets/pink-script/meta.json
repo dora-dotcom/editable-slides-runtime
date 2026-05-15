@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "id": "pink-script",
+  "name": "Pink Script",
+  "vibe": [
+    "bold",
+    "elegant",
+    "luxe"
+  ],
+  "mood": [
+    "impressed",
+    "inspired"
+  ],
+  "category": "bold-poster",
+  "lightDark": "dark",
+  "typography": {
+    "display": "DM Serif Display",
+    "body": "Inter",
+    "source": "google-fonts"
+  },
+  "colors": {
+    "ink": "#060507",
+    "paper": "#F5EDF1",
+    "pink": "#ED3D8C",
+    "pink-2": "#FF66A8",
+    "pink-deep": "#B81D67"
+  },
+  "capabilities": {
+    "pdfExport": true,
+    "imageUpload": true
+  },
+  "source": {
+    "origin": "zarazhangrui/beautiful-html-templates",
+    "license": "MIT",
+    "originalUrl": "https://github.com/zarazhangrui/beautiful-html-templates/blob/main/templates/pink-script/template.html",
+    "originalPath": "templates/pink-script/template.html"
+  },
+  "ported": {
+    "by": "frontend-slides-editable",
+    "date": "2026-05-15",
+    "notes": "Ported 3 of N slides (cover, chapter, sign-off)."
+  }
+}

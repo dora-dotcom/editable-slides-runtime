@@ -30,32 +30,33 @@ Templates adapted from external repositories. The visual design is credited to t
 | Preset ID | Original path | Status |
 |---|---|---|
 | `block-frame` | `templates/block-frame/template.html` | ✅ Ported 2026-05-15 (4 of 10 slides) |
-| `raw-grid` | `templates/raw-grid/template.html` | _Pending port_ |
-| `neo-grid-bold` | `templates/neo-grid-bold/template.html` | _Pending port_ |
-| `8-bit-orbit` | `templates/8-bit-orbit/template.html` | _Pending port_ |
+| `raw-grid` | `templates/raw-grid/template.html` | ✅ Ported 2026-05-15 (3 slides) |
+| `neo-grid-bold` | `templates/neo-grid-bold/template.html` | ✅ Ported 2026-05-15 (3 slides) |
+| `8-bit-orbit` | `templates/8-bit-orbit/template.html` | ✅ Ported 2026-05-15 (3 slides) |
 | `retro-windows` | `templates/retro-windows/template.html` | ✅ Ported 2026-05-15 (3 of 10 slides) |
-| `retro-zine` | `templates/retro-zine/template.html` | _Pending port_ |
-| `sakura-chroma` | `templates/sakura-chroma/template.html` | _Pending port_ |
+| `retro-zine` | `templates/retro-zine/template.html` | ✅ Ported 2026-05-15 (3 slides) |
+| `sakura-chroma` | `templates/sakura-chroma/template.html` | ✅ Ported 2026-05-15 (3 slides) |
 | `scatterbrain` | `templates/scatterbrain/template.html` | ✅ Ported 2026-05-15 (3 of 10 slides) |
-| `pin-and-paper` | `templates/pin-and-paper/template.html` | _Pending port_ |
-| `daisy-days` | `templates/daisy-days/template.html` | _Pending port_ |
+| `pin-and-paper` | `templates/pin-and-paper/template.html` | ✅ Ported 2026-05-15 (3 slides) |
+| `daisy-days` | `templates/daisy-days/template.html` | ✅ Ported 2026-05-15 (3 slides) |
 | `bold-poster` | `templates/bold-poster/template.html` | ✅ Ported 2026-05-15 (4 of 10 slides) |
-| `studio` | `templates/studio/template.html` | _Pending port_ |
-| `pink-script` | `templates/pink-script/template.html` | _Pending port_ |
-| `coral` | `templates/coral/template.html` | _Pending port_ |
-| `biennale-yellow` | `templates/biennale-yellow/template.html` | _Pending port_ |
-| `peoples-platform` | `templates/peoples-platform/template.html` | _Pending port_ |
+| `studio` | `templates/studio/template.html` | ✅ Ported 2026-05-15 (3 slides) |
+| `pink-script` | `templates/pink-script/template.html` | ✅ Ported 2026-05-15 (3 slides) |
+| `coral` | `templates/coral/template.html` | ✅ Ported 2026-05-15 (3 slides) |
+| `biennale-yellow` | `templates/biennale-yellow/template.html` | ✅ Ported 2026-05-15 (3 slides) |
+| `peoples-platform` | `templates/peoples-platform/template.html` | ✅ Ported 2026-05-15 (3 slides) |
 | `monochrome` | `templates/monochrome/template.html` | ✅ Ported 2026-05-15 (4 of 16 slides) |
-| `stencil-tablet` | `templates/stencil-tablet/template.html` | _Pending port_ |
-| `mat` | `templates/mat/template.html` | _Pending port_ |
-| `grove` | `templates/grove/template.html` | _Pending port_ |
-| `long-table` | `templates/long-table/template.html` | _Pending port_ |
-| `editorial-forest` | `templates/editorial-forest/template.html` | _Pending port_ |
-| `editorial-tri-tone` | `templates/editorial-tri-tone/template.html` | _Pending port_ |
-| `cobalt-grid` | `templates/cobalt-grid/template.html` | _Pending port_ |
-| `cartesian` | `templates/cartesian/template.html` | _Pending port_ |
-| `capsule` | `templates/capsule/template.html` | _Pending port_ |
-| `playful` | `templates/playful/template.html` | _Pending port_ |
+| `stencil-tablet` | `templates/stencil-tablet/template.html` | ✅ Ported 2026-05-15 (3 slides) |
+| `mat` | `templates/mat/template.html` | ✅ Ported 2026-05-15 (3 slides) |
+| `grove` | `templates/grove/template.html` | ✅ Ported 2026-05-15 (3 slides) |
+| `long-table` | `templates/long-table/template.html` | ✅ Ported 2026-05-15 (3 slides) |
+| `editorial-forest` | `templates/editorial-forest/template.html` | ✅ Ported 2026-05-15 (3 slides) |
+| `editorial-tri-tone` | `templates/editorial-tri-tone/template.html` | ✅ Ported 2026-05-15 (3 slides) |
+| `cobalt-grid` | `templates/cobalt-grid/template.html` | ✅ Ported 2026-05-15 (3 slides) |
+| `cartesian` | `templates/cartesian/template.html` | ✅ Ported 2026-05-15 (3 slides) |
+| `capsule` | `templates/capsule/template.html` | ✅ Ported 2026-05-15 (3 slides) |
+| `playful` | `templates/playful/template.html` | ✅ Ported 2026-05-15 (3 slides) |
+| `broadside` | `templates/broadside/template.html` | ✅ Ported 2026-05-15 (3 slides) |
 
 ## Evaluated but not ported
 
@@ -70,8 +71,3 @@ Reviewed during the migration but excluded because they visually overlap with an
 | `creative-mode` | `bold-signal` | Archivo Black + multi-color accents — too similar. |
 | `blue-professional` | `electric-studio` | Cobalt blue + cream — same palette. |
 
-## Pending evaluation
-
-| Source template | Notes |
-|---|---|
-| `broadside` | Not yet inspected — decision deferred. |
