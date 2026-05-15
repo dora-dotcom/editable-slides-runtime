@@ -1,6 +1,6 @@
 # Simular AI
 
-**Vibe (auto-detected — review):** bold, editorial, elegant
+**Vibe (auto-detected — review):** editorial, elegant
 
 **Layout:** Auto-generated draft from a URL clone. Three placeholder slides (title cover, three-point content, closing) using the extracted palette and typography. Review and refine the layout to match the source aesthetic.
 
@@ -13,11 +13,11 @@
 :root {
   --paper: #FDFDFD;
   --ink: #000000;
-  --accent: #672ED9;
-  --muted: #B0A49B;
+  --accent: #B0A49B;
+  --muted: #8B8B8B;
   --extra-1: #423D3B;
   --extra-2: #F2E0CC;
-  --extra-3: #8B8B8B;
+  --extra-3: #111C34;
 }
 ```
 

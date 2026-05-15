@@ -153,26 +153,42 @@ def cluster_colors(counts: Counter, min_distance: int = 32):
 
 
 def classify_palette(clustered):
-    """Return dict of named tokens: paper / ink / accent / muted / extras."""
+    """Return dict of named tokens: paper / ink / accent / muted / extras.
+
+    Accent picking is **weight-aware**: a chromatic color must have visible
+    presence (≥ 1% of total clustered weight) to qualify. Otherwise the page
+    is judged neutral / image-led and accent falls back to the most visible
+    non-paper, non-ink tone.
+    """
     if not clustered:
         return {'paper': (250, 250, 245), 'ink': (20, 20, 20), 'accent': (220, 60, 60)}
 
+    total_weight = sum(w for _, w in clustered) or 1
     by_lum = sorted(clustered, key=lambda x: luminance(x[0]))
-    by_sat = sorted(clustered, key=lambda x: saturation(x[0]), reverse=True)
 
     paper = by_lum[-1][0]   # lightest
     ink = by_lum[0][0]      # darkest
 
-    # Accent: most saturated that isn't paper or ink and is at least mid-saturated
+    # Filter out paper / ink, score candidates by saturation × visual-weight share.
+    candidates = [(rgb, w) for rgb, w in clustered if rgb != paper and rgb != ink]
+
+    chromatic = [(rgb, w) for rgb, w in candidates if saturation(rgb) >= 0.3]
     accent = None
-    for rgb, _ in by_sat:
-        if rgb == paper or rgb == ink:
-            continue
-        if saturation(rgb) > 0.3:
-            accent = rgb
-            break
-    if accent is None and len(by_sat) > 0:
-        accent = by_sat[0][0]
+    if chromatic:
+        # Sort by sat × sqrt(weight) so saturation matters but weight tiebreaks
+        chromatic.sort(key=lambda x: saturation(x[0]) * ((x[1] / total_weight) ** 0.5), reverse=True)
+        top_rgb, top_w = chromatic[0]
+        share = top_w / total_weight
+        # Only use as accent if it has at least 1% visual presence in the merged palette
+        if share >= 0.01:
+            accent = top_rgb
+
+    # Fallback: most prominent non-paper, non-ink tone (often a warm/neutral muted)
+    if accent is None and candidates:
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        accent = candidates[0][0]
+    if accent is None:
+        accent = (220, 60, 60)
 
     # Muted: mid-luminance, lower saturation
     muted = None
@@ -833,6 +849,30 @@ def image_palette_from_screenshot(snapshot_path: Path, n_colors: int = 8):
 
 # ─── Template synthesis ───────────────────────────────────────────────────────
 
+def _h1_clamp(raw_size: str) -> str:
+    """Derive a clamp() font-size from the extracted h1 value.
+
+    `raw_size` examples:
+      '66.08px' (CDP computed value) → clamp(46px, 5.16vw, 70px)
+      '48px !important' (CSS regex)  → clamp(34px, 3.75vw, 50px)
+      '3rem'                          → clamp(34px, 3.75vw, 50px)
+      missing / unparseable           → clamp(56px, 9vw, 140px)
+    """
+    default = 'clamp(56px, 9vw, 140px)'
+    if not raw_size:
+        return default
+    cleaned = raw_size.replace('!important', '').strip()
+    px = _parse_font_size_px(cleaned)
+    if px <= 0:
+        return default
+    # Target px = the source's rendered size at 1280 viewport.
+    # Lower bound is ~70% of target for mobile, upper bound is ~5% over target.
+    min_px = max(16, int(px * 0.70))
+    max_px = int(px * 1.05)
+    vw = round(px / 12.8, 2)  # at 1280 viewport, this vw == px
+    return f'clamp({min_px}px, {vw}vw, {max_px}px)'
+
+
 def synth_theme_css(palette, fonts_link, display, body, h1_props=None):
     paper = rgb_to_hex(palette['paper'])
     ink = rgb_to_hex(palette['ink'])
@@ -900,7 +940,7 @@ body {{ margin: 0; font-family: var(--font-body); background: var(--uc-paper); c
 .uc-h1 {{
   font-family: var(--font-display);
   font-weight: {h1_props.get('font-weight', '700')};
-  font-size: clamp(56px, 9vw, 140px);
+  font-size: {_h1_clamp(h1_props.get('font-size'))};
   line-height: {h1_props.get('line-height', '0.95')};
   letter-spacing: {h1_props.get('letter-spacing', '-0.02em')};
   text-transform: {h1_props.get('text-transform', 'none')};

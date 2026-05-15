@@ -3,13 +3,12 @@
   "id": "simular-ai",
   "name": "Simular AI",
   "vibe": [
-    "bold",
     "editorial",
     "elegant"
   ],
   "mood": [
     "inspired",
-    "excited"
+    "calm"
   ],
   "category": "editorial",
   "lightDark": "light",
@@ -21,11 +20,11 @@
   "colors": {
     "paper": "#FDFDFD",
     "ink": "#000000",
-    "accent": "#672ED9",
-    "muted": "#B0A49B",
+    "accent": "#B0A49B",
+    "muted": "#8B8B8B",
     "extra-1": "#423D3B",
     "extra-2": "#F2E0CC",
-    "extra-3": "#8B8B8B"
+    "extra-3": "#111C34"
   },
   "capabilities": {
     "pdfExport": true,
