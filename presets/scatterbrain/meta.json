@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "id": "scatterbrain",
+  "name": "Scatterbrain",
+  "vibe": [
+    "playful",
+    "handwritten",
+    "warm",
+    "indie"
+  ],
+  "mood": [
+    "inspired",
+    "excited"
+  ],
+  "category": "handwriting",
+  "lightDark": "light",
+  "typography": {
+    "display": "Shrikhand",
+    "body": "Zilla Slab",
+    "source": "google-fonts"
+  },
+  "colors": {
+    "yellow": "#ffe066",
+    "blue": "#a5d8ff",
+    "pink": "#ffc9c9",
+    "green": "#b2f2bb",
+    "orange": "#ffcc80",
+    "paper": "#f7f5f0",
+    "ink": "#2d2a26"
+  },
+  "capabilities": {
+    "pdfExport": true,
+    "imageUpload": true
+  },
+  "source": {
+    "origin": "zarazhangrui/beautiful-html-templates",
+    "license": "MIT",
+    "originalUrl": "https://github.com/zarazhangrui/beautiful-html-templates/blob/main/templates/scatterbrain/template.html",
+    "originalPath": "templates/scatterbrain/template.html"
+  },
+  "ported": {
+    "by": "frontend-slides-editable",
+    "date": "2026-05-15",
+    "notes": "Ported 3 of 10 source slides (title cluster, two-column discovery/solution, closing cluster). Class prefix `sc-` added to all post-it/pin/typography classes to avoid CSS collisions."
+  }
+}

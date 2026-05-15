@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "id": "retro-windows",
+  "name": "Retro Windows",
+  "vibe": [
+    "retro",
+    "playful",
+    "experimental"
+  ],
+  "mood": [
+    "excited",
+    "inspired"
+  ],
+  "category": "retro-pixel",
+  "lightDark": "light",
+  "typography": {
+    "display": "Press Start 2P",
+    "body": "\"MS Sans Serif\", \"Segoe UI\", Tahoma, sans-serif",
+    "source": "google-fonts"
+  },
+  "colors": {
+    "bg-gray": "#c0c0c0",
+    "bg-light": "#d4d0c8",
+    "bg-dark": "#808080",
+    "blue-navy": "#000080",
+    "btn-shadow": "#404040",
+    "white": "#ffffff",
+    "green": "#008000"
+  },
+  "capabilities": {
+    "pdfExport": true,
+    "imageUpload": true
+  },
+  "source": {
+    "origin": "zarazhangrui/beautiful-html-templates",
+    "license": "MIT",
+    "originalUrl": "https://github.com/zarazhangrui/beautiful-html-templates/blob/main/templates/retro-windows/template.html",
+    "originalPath": "templates/retro-windows/template.html"
+  },
+  "ported": {
+    "by": "frontend-slides-editable",
+    "date": "2026-05-15",
+    "notes": "Ported 3 of 10 source slides (cover, agenda, shutdown). Renamed source classes (.win-*, .panel-*, .btn-retro) to .rw-* prefix to avoid collisions with deck chrome. Source `.progress-bar` class clashed with deck progress bar so the in-slide variant was kept inside the panels."
+  }
+}

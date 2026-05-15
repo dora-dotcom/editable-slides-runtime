@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "id": "monochrome",
+  "name": "Monochrome",
+  "vibe": [
+    "minimal",
+    "academic",
+    "editorial",
+    "monochrome"
+  ],
+  "mood": [
+    "calm",
+    "impressed"
+  ],
+  "category": "minimal",
+  "lightDark": "light",
+  "typography": {
+    "display": "Jost",
+    "body": "Jost",
+    "source": "google-fonts"
+  },
+  "colors": {
+    "bg": "#fafadf",
+    "bg-alt": "#f2f2d2",
+    "bg-cream": "#f5f0e4",
+    "fg": "#1a1a16",
+    "fg-2": "#5e5e54",
+    "fg-3": "#8a8a80"
+  },
+  "capabilities": {
+    "pdfExport": true,
+    "imageUpload": true
+  },
+  "source": {
+    "origin": "zarazhangrui/beautiful-html-templates",
+    "license": "MIT",
+    "originalUrl": "https://github.com/zarazhangrui/beautiful-html-templates/blob/main/templates/monochrome/template.html",
+    "originalPath": "templates/monochrome/template.html"
+  },
+  "ported": {
+    "by": "frontend-slides-editable",
+    "date": "2026-05-15",
+    "notes": "Ported 4 of 16 source slides (cover, key finding statement, verbatim dark quote, end). Renamed source `.slide-sidebar` to `.iv-sidebar` to avoid collision with deck chrome `.slide-sidebar`. Class prefix `iv-` added throughout."
+  }
+}

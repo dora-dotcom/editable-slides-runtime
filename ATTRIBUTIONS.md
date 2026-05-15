@@ -29,14 +29,14 @@ Templates adapted from external repositories. The visual design is credited to t
 
 | Preset ID | Original path | Status |
 |---|---|---|
-| `block-frame` | `templates/block-frame/template.html` | _Pending port_ |
+| `block-frame` | `templates/block-frame/template.html` | ✅ Ported 2026-05-15 (4 of 10 slides) |
 | `raw-grid` | `templates/raw-grid/template.html` | _Pending port_ |
 | `neo-grid-bold` | `templates/neo-grid-bold/template.html` | _Pending port_ |
 | `8-bit-orbit` | `templates/8-bit-orbit/template.html` | _Pending port_ |
-| `retro-windows` | `templates/retro-windows/template.html` | _Pending port_ |
+| `retro-windows` | `templates/retro-windows/template.html` | ✅ Ported 2026-05-15 (3 of 10 slides) |
 | `retro-zine` | `templates/retro-zine/template.html` | _Pending port_ |
 | `sakura-chroma` | `templates/sakura-chroma/template.html` | _Pending port_ |
-| `scatterbrain` | `templates/scatterbrain/template.html` | _Pending port_ |
+| `scatterbrain` | `templates/scatterbrain/template.html` | ✅ Ported 2026-05-15 (3 of 10 slides) |
 | `pin-and-paper` | `templates/pin-and-paper/template.html` | _Pending port_ |
 | `daisy-days` | `templates/daisy-days/template.html` | _Pending port_ |
 | `bold-poster` | `templates/bold-poster/template.html` | ✅ Ported 2026-05-15 (4 of 10 slides) |
@@ -45,7 +45,7 @@ Templates adapted from external repositories. The visual design is credited to t
 | `coral` | `templates/coral/template.html` | _Pending port_ |
 | `biennale-yellow` | `templates/biennale-yellow/template.html` | _Pending port_ |
 | `peoples-platform` | `templates/peoples-platform/template.html` | _Pending port_ |
-| `monochrome` | `templates/monochrome/template.html` | _Pending port_ |
+| `monochrome` | `templates/monochrome/template.html` | ✅ Ported 2026-05-15 (4 of 16 slides) |
 | `stencil-tablet` | `templates/stencil-tablet/template.html` | _Pending port_ |
 | `mat` | `templates/mat/template.html` | _Pending port_ |
 | `grove` | `templates/grove/template.html` | _Pending port_ |
