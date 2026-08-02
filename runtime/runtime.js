@@ -850,7 +850,6 @@
         item.appendChild(lineTop);
         item.appendChild(host);
         item.appendChild(lineBot);
-        item.appendChild(actions);
 
         item.addEventListener('click', (ev) => {
           if (ev.target.closest('button')) return;
@@ -859,8 +858,11 @@
         });
 
         this._fillThumb(slide, host);
-        // after _fillThumb: it clears the host to draw the thumbnail
+        // after _fillThumb: it clears the host to draw the thumbnail.
+        // Everything that sits on a thumbnail is anchored to the thumbnail —
+        // the item is taller than it, so item-relative corners miss.
         host.appendChild(num);
+        host.appendChild(actions);
         const skipped = slide.hasAttribute('data-skip');
         if (skipped) item.classList.add('is-skipped');
 

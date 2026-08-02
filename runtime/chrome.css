@@ -1105,3 +1105,10 @@ body.deck-edit-mode .slides-offset > section.slide::after {
   border: 1px dashed color-mix(in srgb, var(--ui-ink) 22%, transparent);
   border-radius: 4px;
 }
+
+/* All three overlays share the thumbnail's coordinate space and its inset, so
+   the corners line up with each other and with the thumbnail's rounding. */
+body.deck-edit-mode .filmstrip-thumb-host { overflow: visible; }
+body.deck-edit-mode .filmstrip-item .filmstrip-actions { right: 6px; top: 6px; }
+body.deck-edit-mode .filmstrip-num { left: 6px; bottom: 6px; }
+.filmstrip-eye { right: 6px; bottom: 6px; }
