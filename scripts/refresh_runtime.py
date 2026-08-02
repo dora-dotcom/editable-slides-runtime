@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Re-inject the current runtime/ into every preset template.
+"""Re-inject the current runtime/ into a deck that already has one.
 
-The runtime is inlined into each preset, so a change under runtime/ reaches
-nobody until the presets are rebuilt. port_to_editable.py ports an outside
-template in; migrate_from_skill.py imports from the skill. Neither refreshes
-what is already here — this does.
+A deck carries the runtime inlined, because it has to be a single file that
+opens anywhere with nothing installed. That means a change under runtime/ does
+not reach a deck until it is put back in. port_to_editable.py wraps a deck that
+has no runtime yet; this refreshes one that does.
 
 Each template carries three injected regions, each with a stable opening
 marker:
@@ -27,9 +27,9 @@ Note the `slides-offset` boundary: the chrome comment mentions it in prose, so
 the real element is the LAST match, not the first.
 
 Usage:
-    refresh_runtime.py                # refresh every preset
-    refresh_runtime.py --check        # report what would change, write nothing
-    refresh_runtime.py --id studio    # one preset
+    refresh_runtime.py --file deck.html
+    refresh_runtime.py --file 'decks/*.html'      # a glob works too
+    refresh_runtime.py --file deck.html --check   # report, write nothing
 """
 
 from __future__ import annotations
@@ -104,40 +104,42 @@ def load_runtime(runtime_dir: Path) -> dict[str, str]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--repo-root', default=str(Path(__file__).resolve().parent.parent))
-    ap.add_argument('--id', help='refresh a single preset by id')
+    ap.add_argument('--file', required=True, action='append',
+                    help='deck HTML to refresh; repeatable, and globs are expanded')
+    ap.add_argument('--runtime', default=str(Path(__file__).resolve().parent.parent / 'runtime'),
+                    help='directory holding runtime.js, chrome.html, chrome.css, viewport-base.css')
     ap.add_argument('--check', action='store_true', help='report changes without writing')
     args = ap.parse_args()
 
-    root = Path(args.repo_root)
-    runtime = load_runtime(root / 'runtime')
-    presets = sorted((root / 'presets').iterdir())
-    if args.id:
-        presets = [p for p in presets if p.name == args.id]
-        if not presets:
-            print(f'no preset with id {args.id!r}', file=sys.stderr)
-            return 2
+    runtime = load_runtime(Path(args.runtime))
+
+    targets: list[Path] = []
+    for pattern in args.file:
+        matches = sorted(Path().glob(pattern)) if any(c in pattern for c in '*?[') else [Path(pattern)]
+        targets.extend(matches)
+    if not targets:
+        print('no files matched', file=sys.stderr)
+        return 2
 
     changed, skipped, failed = 0, 0, []
-    for preset in presets:
-        template = preset / 'template.html'
-        if not template.is_file():
+    for target in targets:
+        if not target.is_file():
+            failed.append((str(target), 'not a file'))
             continue
-        before = template.read_text(encoding='utf-8')
+        before = target.read_text(encoding='utf-8')
         try:
             after = refresh(before, runtime)
         except RefreshError as exc:
-            failed.append((preset.name, str(exc)))
+            failed.append((str(target), str(exc)))
             continue
 
         if after == before:
             skipped += 1
             continue
         changed += 1
-        delta = len(after) - len(before)
-        print(f'  {preset.name:<24} {delta:+d} bytes')
+        print(f'  {target}  {len(after) - len(before):+d} bytes')
         if not args.check:
-            template.write_text(after, encoding='utf-8')
+            target.write_text(after, encoding='utf-8')
 
     verb = 'would change' if args.check else 'refreshed'
     print(f'\n{verb}: {changed}   already current: {skipped}   failed: {len(failed)}')

@@ -1,5 +1,22 @@
 # Attributions
 
+**The designs listed here are no longer in this repository.** It now ships only
+the editing runtime and the contract a deck must meet — designs belong to their
+authors, and the runtime never needed them.
+
+This file stays as the record of what was once vendored here and where it came
+from, so the history is traceable and the credit is not lost.
+
+**For the originals, go to the source:**
+[zarazhangrui/beautiful-html-templates](https://github.com/zarazhangrui/beautiful-html-templates)
+(MIT) — better maintained there than a fork could be. `port_to_editable.py`
+will wrap any of them to the contract.
+
+The Simular AI design moved to its own private repository, since it carries a
+company's brand rather than an open-source design.
+
+---
+
 This repository contains both original templates and templates derived from external open-source sources. All derived templates are credited below with links to their original location and license.
 
 ## Original templates

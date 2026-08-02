@@ -15,3 +15,5 @@ venv/
 node_modules/
 .cache/
 .tmp/
+.audit-cache/
+*.bak
