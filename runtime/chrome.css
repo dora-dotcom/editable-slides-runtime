@@ -973,3 +973,35 @@ body:not(.deck-edit-mode) .deck-btn-done { display: none; }
    each splitting the panel evenly. */
 .deck-split2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 .deck-inspector .deck-split2 button { width: 100%; padding: 0 6px; }
+
+/* Handles sit outside the panels: inside, the panel's own scrolling clipped
+   them. Fixed to the shell edges instead, so they follow the collapse. */
+.deck-panel-handle {
+  position: fixed; top: 50%; transform: translateY(-50%);
+  width: 15px; height: 52px; padding: 0; display: none;
+  align-items: center; justify-content: center; z-index: 9100;
+  border: 1px solid var(--ui-line); background: var(--ui-surface);
+  color: var(--ui-ink-2); cursor: pointer;
+}
+body.deck-edit-mode .deck-panel-handle { display: flex; }
+.deck-panel-handle::before { content: ''; width: 0; height: 0;
+  border-top: 4px solid transparent; border-bottom: 4px solid transparent; }
+.deck-panel-handle--left  { left: var(--shell-left); border-radius: 0 7px 7px 0; border-left: 0; }
+.deck-panel-handle--right { right: var(--shell-right); border-radius: 7px 0 0 7px; border-right: 0; }
+.deck-panel-handle--left::before  { border-right: 5px solid currentColor; }
+.deck-panel-handle--right::before { border-left: 5px solid currentColor; }
+body.deck-hide-left  .deck-panel-handle--left::before  { border-right: 0; border-left: 5px solid currentColor; }
+body.deck-hide-right .deck-panel-handle--right::before { border-left: 0; border-right: 5px solid currentColor; }
+.deck-panel-handle:hover { color: var(--ui-ink); background: var(--ui-hover); }
+
+/* Skipped slides stay in the file and in the filmstrip, faded, with a rule
+   through the number so it is obvious they are not in the talk. */
+body.deck-edit-mode .filmstrip-item.is-skipped .filmstrip-thumb-host { opacity: 0.42; }
+body.deck-edit-mode .filmstrip-item.is-skipped .filmstrip-num {
+  background: rgba(20,21,24,0.45); text-decoration: line-through;
+}
+.deck-check {
+  display: flex; align-items: center; gap: 7px; cursor: pointer;
+  font-size: 12px; color: var(--ui-ink);
+}
+.deck-check input { accent-color: var(--deck-chrome-accent, #1b1c1f); }

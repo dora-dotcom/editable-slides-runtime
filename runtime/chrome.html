@@ -75,12 +75,15 @@
   <button type="button" class="deck-present-exit" data-present="exit" title="Exit (Esc)">Exit &nbsp;<kbd>Esc</kbd></button>
 </div>
 
+<button type="button" class="deck-panel-handle deck-panel-handle--left" data-panel-toggle="left"
+        aria-label="Show or hide the slide list" title="Slides"></button>
+<button type="button" class="deck-panel-handle deck-panel-handle--right" data-panel-toggle="right"
+        aria-label="Show or hide properties" title="Properties"></button>
+
 <div class="progress-bar" id="progressBar"></div>
 <nav class="nav-dots" id="navDots" aria-label="Slides"></nav>
 
 <aside class="slide-sidebar" id="slideSidebar" aria-label="Slide pages">
-  <button type="button" class="deck-panel-handle deck-panel-handle--left" data-panel-toggle="left"
-          aria-label="Hide slides" title="Hide slides">&lsaquo;</button>
   <h3>Slides</h3>
   <div class="filmstrip-list" id="filmstripList"></div>
   <div class="filmstrip-actions" style="margin-top:auto;flex-direction:column;gap:6px;">
@@ -94,8 +97,6 @@
 
 <!-- Inspector: page-level and selection-level properties, right-hand side -->
 <aside class="deck-inspector" id="deckInspector" data-deck-chrome-surface="" aria-label="Properties">
-  <button type="button" class="deck-panel-handle deck-panel-handle--right" data-panel-toggle="right"
-          aria-label="Hide properties" title="Hide properties">&rsaquo;</button>
 
   <!-- selection sections: shown only when an object is selected -->
   <section class="deck-sect" id="sectSelection" hidden>
@@ -219,6 +220,9 @@
     <div class="deck-sect-body">
       <div class="deck-field"><span class="deck-field-label">Background</span>
         <div class="deck-field-row"><input type="color" data-slide-bg><button type="button" data-slide-bg-reset>Reset</button></div>
+      </div>
+      <div class="deck-field">
+        <label class="deck-check"><input type="checkbox" data-slide-skip> Skip when presenting</label>
       </div>
       <p class="deck-hint" id="slidePos"></p>
     </div>

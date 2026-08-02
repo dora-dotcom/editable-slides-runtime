@@ -112,9 +112,18 @@
       }
       this._updateChrome();
     }
-    goTo(i) {
+    goTo(i, dir) {
       this.refreshSlides();
       i = Math.max(0, Math.min(this.slides.length - 1, i));
+      // Slides marked skip are still editable, just not part of the talk.
+      if (document.body.classList.contains('deck-presenting')) {
+        const step = dir || (i >= this.current ? 1 : -1);
+        while (this.slides[i] && this.slides[i].hasAttribute('data-skip')) {
+          const next = i + step;
+          if (next < 0 || next >= this.slides.length) break;
+          i = next;
+        }
+      }
       const instant = prefersReducedMotion() || document.body.classList.contains('deck-presenting');
       this.slides[i].scrollIntoView({ behavior: instant ? 'auto' : 'smooth' });
       this.current = i;
@@ -170,12 +179,25 @@
   function ensureResizeHandles(root) {
     const el = root || document;
     el.querySelectorAll('[data-slide-object]').forEach((obj) => {
-      if (obj.querySelector('.slide-object-resize')) return;
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'slide-object-resize';
-      btn.setAttribute('aria-label', 'Resize');
-      obj.appendChild(btn);
+      if (!obj.querySelector('.slide-object-resize')) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'slide-object-resize';
+        btn.setAttribute('aria-label', 'Resize');
+        obj.appendChild(btn);
+      }
+      // A document arrives with objects but no handles — only ones inserted by
+      // the editor carried them, so half a deck could be dragged and half
+      // could not. Both handles are affordances, not content: added here,
+      // stripped on save and export.
+      if (!obj.querySelector('.slide-object-move')) {
+        const mv = document.createElement('button');
+        mv.type = 'button';
+        mv.className = 'slide-object-move';
+        mv.setAttribute('aria-label', 'Move');
+        mv.textContent = '\u283F';
+        obj.insertBefore(mv, obj.firstChild);
+      }
     });
   }
 
@@ -804,7 +826,6 @@
         const num = document.createElement('span');
         num.className = 'filmstrip-num';
         num.textContent = String(idx + 1);
-        host.appendChild(num);
         const dup = document.createElement('button');
         dup.type = 'button';
         dup.innerHTML = '&#9109;';
@@ -838,6 +859,9 @@
         });
 
         this._fillThumb(slide, host);
+        // after _fillThumb: it clears the host to draw the thumbnail
+        host.appendChild(num);
+        if (slide.hasAttribute('data-skip')) item.classList.add('is-skipped');
 
         item.addEventListener('pointerdown', (ev) => {
           if (ev.target.closest('button')) return;
@@ -1790,9 +1814,13 @@
 
   function refreshFields() {
     const slides = deck.slides || [];
-    slides.forEach(function (slide, i) {
+    // Numbering follows the talk, not the file: a skipped slide is neither
+    // counted nor numbered, so the run of page numbers stays unbroken.
+    const shown = slides.filter(function (s) { return !s.hasAttribute('data-skip'); });
+    slides.forEach(function (slide) {
+      const at = shown.indexOf(slide);
       slide.querySelectorAll('[data-field]').forEach(function (el) {
-        el.textContent = resolveField(el.getAttribute('data-field'), i, slides.length);
+        el.textContent = at === -1 ? '—' : resolveField(el.getAttribute('data-field'), at, shown.length);
       });
     });
   }
@@ -2387,7 +2415,16 @@
 
     const slide = currentSlide();
     const pos = document.getElementById('slidePos');
-    if (pos && slide) pos.textContent = 'Slide ' + (deck.current + 1) + ' of ' + (deck.slides || []).length;
+    if (pos && slide) {
+      const all = deck.slides || [];
+      const shown = all.filter(function (s) { return !s.hasAttribute('data-skip'); });
+      const at = shown.indexOf(slide);
+      pos.textContent = at === -1
+        ? 'Slide ' + (deck.current + 1) + ' in the file · skipped when presenting'
+        : 'Slide ' + (at + 1) + ' of ' + shown.length;
+    }
+    const sk = document.querySelector('[data-slide-skip]');
+    if (sk && slide) sk.checked = slide.hasAttribute('data-skip');
     const bg = document.querySelector('[data-slide-bg]');
     if (bg && slide && document.activeElement !== bg) {
       const rgb = getComputedStyle(slide).backgroundColor.match(/\d+/g);
@@ -2449,6 +2486,23 @@
     if (!e.target.closest || !e.target.closest('[data-text-colour-reset]')) return;
     const t = selectedObject() && selectedObject().querySelector('.slide-object-text');
     if (t) { t.style.color = ''; syncInspector(); }
+  });
+
+  document.addEventListener('change', function (e) {
+    const c = e.target.closest && e.target.closest('[data-slide-skip]');
+    if (!c) return;
+    const slide = currentSlide();
+    if (!slide) return;
+    const before = slide.hasAttribute('data-skip');
+    const apply = function (on) {
+      if (on) slide.setAttribute('data-skip', ''); else slide.removeAttribute('data-skip');
+      refreshFields();
+      sidebar.refresh();
+      syncInspector();
+    };
+    apply(c.checked);
+    history.push({ undo: function () { apply(before); }, redo: function () { apply(!before); } });
+    updateUndoRedoChrome();
   });
 
   document.addEventListener('input', function (e) {
