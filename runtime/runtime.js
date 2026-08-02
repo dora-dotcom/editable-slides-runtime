@@ -263,6 +263,12 @@
       } else {
         this.clearSelection();
         this.toolbar.classList.remove('visible');
+        // The filmstrip belongs to the edit shell. Presenting turns editing
+        // off, so without this it survived the trip and reappeared over the
+        // deck on the way back.
+        document.body.classList.remove('deck-sidebar-open');
+        const pages = document.getElementById('pagesToggle');
+        if (pages) pages.classList.remove('active');
         document.querySelectorAll('.slide-object-text[contenteditable="true"]').forEach((el) => {
           el.contentEditable = 'false';
         });
@@ -2843,8 +2849,7 @@
   (function () {
     var inp = document.getElementById('deckImgInput');
     if (!inp) return;
-    var triggers = [document.getElementById('btnAddImage')]
-      .concat(Array.prototype.slice.call(document.querySelectorAll('[data-insert="image"]')));
+    var triggers = Array.prototype.slice.call(document.querySelectorAll('[data-insert="image"]'));
     triggers.forEach(function (btn) {
       if (btn) btn.addEventListener('click', function () { inp.click(); });
     });

@@ -1112,3 +1112,11 @@ body.deck-edit-mode .filmstrip-thumb-host { overflow: visible; }
 body.deck-edit-mode .filmstrip-item .filmstrip-actions { right: 6px; top: 6px; }
 body.deck-edit-mode .filmstrip-num { left: 6px; bottom: 6px; }
 .filmstrip-eye { right: 6px; bottom: 6px; }
+
+/* The filmstrip is part of the edit shell, so it has no business appearing
+   over a deck that is only being read. */
+body:not(.deck-edit-mode) .slide-sidebar { display: none; }
+
+/* Export sits with Present and Done — things you do to the whole deck — and
+   opens leftwards so it does not run off the edge of the window. */
+.deck-menu--end .deck-menu-list { left: auto; right: 0; }

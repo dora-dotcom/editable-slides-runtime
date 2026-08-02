@@ -56,6 +56,13 @@
   </div>
 
   <div class="deck-left-row deck-bar-trail">
+    <div class="deck-menu deck-menu--end" data-menu="export">
+      <button type="button" class="deck-menu-btn" data-menu-toggle aria-haspopup="true" aria-expanded="false">Export</button>
+      <div class="deck-menu-list" role="menu">
+        <button type="button" role="menuitem" id="btnExport">HTML file</button>
+        <button type="button" role="menuitem" id="btnExportPdf">PDF</button>
+      </div>
+    </div>
     <button type="button" class="deck-btn-present" data-present="start" title="Present (P)">Present</button>
     <button type="button" class="deck-btn-done" id="btnDoneEdit">Done</button>
   </div>
@@ -89,9 +96,6 @@
   <div class="filmstrip-actions" style="margin-top:auto;flex-direction:column;gap:6px;">
     <button type="button" id="btnNewSlide" style="width:100%;">New slide</button>
     <button type="button" id="btnDuplicateSlide" style="width:100%;">Duplicate slide</button>
-    <button type="button" id="btnAddImage" style="width:100%;">Add image</button>
-    <button type="button" id="btnExport" style="width:100%;">Export HTML</button>
-    <button type="button" id="btnExportPdf" style="width:100%;">Export PDF</button>
   </div>
 </aside>
 
