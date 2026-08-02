@@ -969,6 +969,11 @@ body.deck-edit-mode .filmstrip-item .filmstrip-actions button:hover { color: var
 /* Done belongs to editing. It lived in the edit chrome, which hides itself on
    exit; moving it to a plain row meant it stayed behind on the page. */
 body:not(.deck-edit-mode) .deck-btn-done { display: none; }
+/* A normal file is an editor and nothing else, so it offers no way out of
+   being one. Done and the Edit toggle exist only where there is a reading
+   state to return to — a file that opened as something to read. */
+body:not(.deck-has-view) .deck-btn-done,
+body:not(.deck-has-view) .edit-toggle { display: none !important; }
 
 /* Four arrange buttons wrapped 3 + 1 and read as a heap. Two labelled pairs,
    each splitting the panel evenly. */

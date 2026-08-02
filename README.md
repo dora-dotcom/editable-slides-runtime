@@ -45,8 +45,16 @@ Port an existing deck instead:
 python3 scripts/port_to_editable.py --source your-deck.html --output editable.html
 ```
 
-Then open `editable.html` and press **E**. `Ctrl/Cmd+S` saves to the browser;
-**Export HTML** writes the file back out.
+Then open `editable.html`. It opens as the editor — that is what the file is.
+Changes save themselves as you make them; **F5** presents and `Esc` puts you
+back where you were.
+
+A deck has two states, editing and presenting, and no third one to get lost
+in. What it does have is two kinds of file, chosen at export: **HTML file** is
+a working copy that opens as the editor, and **HTML file (reading copy)** is
+one that opens as a deck to read — for sending to someone who wants to read
+it, not edit it. A reading copy is a posture rather than a lock: **E** opens
+the editor and **Done** returns.
 
 Pick up a newer runtime in a deck you already have:
 

@@ -1248,14 +1248,22 @@
     } catch (e) { console.warn(e); }
   }
 
-  function exportHtml() {
+  /* Two kinds of file come out of here, and which one you meant is a choice
+   * made at export rather than by hand-editing an attribute afterwards. A
+   * reading copy opens as a deck to read, with a way in for whoever wants it;
+   * a working copy opens as the editor. Bento splits the same way — its
+   * "readonly" files are player files, chosen when you save them. */
+  function exportHtml(readOnly) {
     const clone = document.documentElement.cloneNode(true);
     sanitizeExportDocument(clone);
+    if (readOnly) clone.setAttribute('data-deck-mode', 'view');
+    else clone.removeAttribute('data-deck-mode');
     const html = '<!DOCTYPE html>\n' + clone.outerHTML;
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = (document.title || 'deck') + '.html';
+    const stem = (document.title || 'deck').replace(/\.html?$/i, '');
+    a.download = stem + (readOnly ? ' (reading copy).html' : '.html');
     a.click();
     URL.revokeObjectURL(a.href);
   }
@@ -1361,6 +1369,13 @@
    *     editing, because the host owns the document there. */
   const OPENS_IN_VIEW =
     document.documentElement.getAttribute('data-deck-mode') === 'view' || !CHROME_ENABLED;
+  /* A normal file has two states, edit and present, and no button for a third:
+   * "Done" only means something when the document opened as something to read.
+   * That is a property of the file, not a mode anyone toggles — a deck sent
+   * round to be read sets data-deck-mode="view" and keeps its way in and out.
+   * Bento draws the same line: its editor has no Done either, and a file that
+   * is meant to be read is a different kind of file. */
+  document.body.classList.toggle('deck-has-view', OPENS_IN_VIEW);
   if (!OPENS_IN_VIEW) {
     // enterEditMode, not editor.setActive — the pages rail is part of the edit
     // shell, and going in through the back door left it shut.
@@ -1459,7 +1474,9 @@
     if (!editor.active) enterEditMode();
   });
 
-  document.getElementById('btnExport').addEventListener('click', exportHtml);
+  document.getElementById('btnExport').addEventListener('click', function () { exportHtml(false); });
+  const btnExportView = document.getElementById('btnExportView');
+  if (btnExportView) btnExportView.addEventListener('click', function () { exportHtml(true); });
   document.getElementById('btnExportPdf').addEventListener('click', exportPdf);
 
   document.addEventListener('keydown', (e) => {
@@ -1476,7 +1493,10 @@
       exitEditMode();
       return;
     }
-    if ((e.key === 'e' || e.key === 'E') && !ce) {
+    /* E is the way into editing a file that opened as something to read.
+     * In a normal file there is nothing to toggle — it is already the editor,
+     * and a stray E would only tip you out of it. */
+    if ((e.key === 'e' || e.key === 'E') && !ce && OPENS_IN_VIEW) {
       e.preventDefault();
       if (editor.active) exitEditMode();
       else enterEditMode();
@@ -2165,11 +2185,16 @@
     return el ? el.textContent.trim().replace(/\s+/g, ' ').slice(0, 90) : '';
   }
 
+  let presentCameFromEdit = false;
   function setPresenting(on) {
     if (!CHROME_ENABLED) return;
     presenting = !!on;
     document.body.classList.toggle('deck-presenting', presenting);
     if (presenting) {
+      /* Presenting sits on top of whatever you were doing and hands it back
+       * on the way out. Without this, Esc from a show dropped you into the
+       * read-only state — somewhere nobody asked to be. */
+      presentCameFromEdit = editor.active;
       if (editor.active) editor.setActive(false);
       const focused = document.activeElement;
       if (focused && focused.blur) focused.blur();
@@ -2181,6 +2206,10 @@
     else {
       clearTimeout(presentIdle);
       document.body.classList.remove('deck-present-awake');
+      if (presentCameFromEdit) {
+        presentCameFromEdit = false;
+        enterEditMode();
+      }
     }
   }
 
@@ -2304,6 +2333,10 @@
     // on where the focus happens to be.
     if (e.key === 'Escape' && presenting) { setPresenting(false); return; }
     if (e.target.closest && e.target.closest('[contenteditable="true"]')) return;
+    /* F5 is the one that works from inside the editor, because it cannot be
+     * mistaken for typing. Bento settled on the same key. P is left for the
+     * reading state, where a bare letter is safe. */
+    if (e.key === 'F5') { e.preventDefault(); setPresenting(!presenting); return; }
     if ((e.key === 'p' || e.key === 'P') && !editor.active) { setPresenting(!presenting); return; }
     if ((e.key === 's' || e.key === 'S') && presenting) openSpeaker();
   });
