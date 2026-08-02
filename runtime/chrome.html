@@ -6,6 +6,7 @@
     <button type="button" class="edit-toggle" id="editToggle" title="Edit mode (E) — hover this corner to show">Edit</button>
     <button type="button" class="sidebar-pages-toggle" id="pagesToggle" title="Pages sidebar">Pages</button>
     <button type="button" class="deck-btn-save" id="btnSave" title="Save layout to browser (Ctrl+S)">Save</button>
+    <button type="button" class="deck-btn-present" data-present="start" title="Present (P)">Present</button>
   </div>
   <div class="deck-edit-chrome deck-left-row deck-left-row--tools" id="deckEditChrome" data-deck-chrome-surface="" role="toolbar" aria-label="Editing">
     <button type="button" id="btnUndo" aria-label="Undo" title="Undo (Ctrl+Z)">
@@ -54,6 +55,15 @@
 <input type="file" id="deckImgInput"   accept="image/*" style="display:none">
 <input type="file" id="deckBgInput"    accept="image/*" style="display:none">
 <input type="file" id="deckMediaInput" accept="video/*,audio/*" style="display:none">
+
+<!-- Present controls: only visible while presenting -->
+<div class="deck-present-bar" id="deckPresentBar" data-deck-chrome-surface="">
+  <button type="button" data-present="prev" aria-label="Previous slide">‹</button>
+  <span class="deck-present-count" id="deckPresentCount">1 / 1</span>
+  <button type="button" data-present="next" aria-label="Next slide">›</button>
+  <button type="button" data-present="speaker" title="Speaker view (S)">Notes</button>
+  <button type="button" data-present="exit" title="Exit (Esc)">Exit</button>
+</div>
 
 <div class="progress-bar" id="progressBar"></div>
 <nav class="nav-dots" id="navDots" aria-label="Slides"></nav>

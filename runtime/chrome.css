@@ -334,3 +334,47 @@ body.deck-edit-mode .slide-object-text [data-field] {
 }
 /* Motion is a viewing behaviour; editing must not fight a drag. */
 body.deck-edit-mode [data-fx-enter] { opacity: 1 !important; transform: none !important; }
+
+/* ---------- Stood down inside another viewer ----------
+   A deck brings its own chrome so it works alone; framed in someone else's
+   app that chrome collides with theirs. Everything the runtime injected goes
+   away, and the document is left as content. A host that wants the editor
+   back sets data-deck-host-chrome on <html>. */
+.deck-stood-down .deck-left-hover-anchor,
+.deck-stood-down .slide-sidebar,
+.deck-stood-down .rte-toolbar,
+.deck-stood-down .deck-present-bar,
+.deck-stood-down .slide-object-move,
+.deck-stood-down .slide-object-resize,
+.deck-stood-down .slide-object-tablectl,
+.deck-stood-down .slide-object-chartctl { display: none !important; }
+.deck-stood-down .slide-object { pointer-events: none; }
+
+/* ---------- Present mode ---------- */
+.deck-present-bar {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+  display: none; align-items: center; gap: 6px; z-index: 40;
+  padding: 6px 10px; border-radius: 999px;
+  background: var(--deck-chrome-surface, #fff);
+  border: 1px solid var(--deck-chrome-border, rgba(0,0,0,0.15));
+  box-shadow: var(--deck-chrome-shadow, 0 4px 18px rgba(0,0,0,0.18));
+  font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px;
+  color: var(--deck-chrome-text, inherit); opacity: 0.25; transition: opacity .18s;
+}
+.deck-present-bar:hover { opacity: 1; }
+.deck-present-bar button {
+  font: inherit; padding: 3px 9px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--deck-chrome-border, rgba(0,0,0,0.15));
+  background: transparent; color: inherit;
+}
+.deck-present-count { font-variant-numeric: tabular-nums; padding: 0 4px; }
+
+body.deck-presenting { overflow: hidden; }
+body.deck-presenting .deck-present-bar { display: flex; }
+body.deck-presenting .deck-left-hover-anchor,
+body.deck-presenting .slide-sidebar,
+body.deck-presenting .rte-toolbar,
+body.deck-presenting .nav-dots,
+body.deck-presenting .slide-object-move,
+body.deck-presenting .slide-object-resize { display: none !important; }
+body.deck-presenting .slides-offset { padding: 0 !important; }

@@ -6,8 +6,9 @@ This runtime does not care what a deck looks like. It was byte-identical across
 the 43 preset designs this repo used to vendor — brutalist, pastel,
 terminal-green, editorial, nothing in common — which is why they were retired:
 they were never a dependency. What the runtime needs is not a design, it is a
-*structure*. Meet the structure below and the editor works: drag, resize, snap,
-rich text, page management, tables, charts, shapes, speaker notes, export.
+*structure*. Meet the structure below and it all works: drag, resize, snap, rich text, page
+management, tables, charts, shapes, motion, presenting, a speaker view, and
+export — with no server, from a file on a disk.
 
 That means a deck built to your company's design system, to a `design.md`, to a
 theme you found on GitHub, or generated from scratch by an agent, is editable
@@ -116,6 +117,51 @@ fight a drag — and all of it respects `prefers-reduced-motion`.
 
 `data-notes` on the `<section>`. Notes live in the file, so they survive being
 exported, emailed, and handed to an agent — which is the point.
+
+---
+
+## Presenting
+
+A deck presents itself. Press **P** to present: the chrome goes away, the deck
+fills the window, arrow keys and space page it, **Esc** leaves. A control pill
+sits at the bottom, faint until you reach for it.
+
+Press **S** while presenting for the **speaker view** — current position, the
+next slide's title, this slide's `data-notes`, and a timer you can click to
+reset. It opens as a second window you drag to another screen.
+
+It works from a local file, which is the point: the speaker window is opened by
+handle and its DOM written directly, rather than synchronised by messaging.
+Messaging between two `file://` windows does not work — they get opaque origins
+and never see each other's channel — so a deck opened off a disk would have lost
+its speaker view. Holding the handle sidesteps that entirely.
+
+If pop-ups are blocked the deck says so in the console and carries on
+presenting; nothing else depends on that window.
+
+---
+
+## Living inside another viewer
+
+A deck carries its own chrome so that it works alone. Inside someone else's
+app that chrome is a collision: two toolbars stacked on each other, two sets of
+arrow-key handlers, two present modes.
+
+So **when the runtime finds itself in an iframe it stands down**: it adds
+`deck-stood-down` to `<html>`, hides every surface it injected — the edit
+chrome, the pages sidebar, the text toolbar, the present bar, the per-object
+handles — and stops answering navigation keys and wheel events. The document
+is left as content, and the host owns paging.
+
+A host that *wants* the chrome back asks for it:
+
+```html
+<html data-deck-host-chrome>
+```
+
+That is the handshake. A viewer embedding a deck read-only sets nothing and
+gets a clean document; a viewer that wants to offer this editor sets the
+attribute and gets the whole runtime, including its save path.
 
 ---
 

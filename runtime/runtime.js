@@ -15,6 +15,20 @@
   const CHART_FILL = 'var(--deck-chrome-accent, currentColor)';
   const CHART_INK = 'var(--text-primary, currentColor)';
 
+  /* ---------- Embed etiquette ----------
+   * A deck carries its own chrome so it works alone. Inside someone else's
+   * viewer that chrome is a collision: two toolbars, two sets of arrow-key
+   * handlers, two present modes. So when framed, the runtime stands down and
+   * leaves the document as content — unless the host explicitly asks for it
+   * back by setting data-deck-host-chrome on <html>, which is how a host that
+   * wants to offer the editor opts in. See CONTRACT.md. */
+  const IS_EMBEDDED = (function () {
+    try { return window.self !== window.top; } catch (e) { return true; }
+  })();
+  const CHROME_ENABLED =
+    !IS_EMBEDDED || document.documentElement.hasAttribute('data-deck-host-chrome');
+  if (!CHROME_ENABLED) document.documentElement.classList.add('deck-stood-down');
+
   function prefersReducedMotion() {
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   }
@@ -125,6 +139,8 @@
       }
     }
     _keys(e) {
+      // Stood down inside someone else's viewer: the host pages the deck.
+      if (!CHROME_ENABLED) return;
       if (document.body.classList.contains('deck-edit-mode')) {
         if (e.target.closest('.slide-object-text[contenteditable="true"]')) return;
         if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') {
@@ -141,6 +157,7 @@
       }
     }
     _wheel(e) {
+      if (!CHROME_ENABLED) return;
       if (document.body.classList.contains('deck-edit-mode')) return;
       if (Math.abs(e.deltaY) < 8) return;
       e.preventDefault();
@@ -1930,9 +1947,148 @@
         playEntrances(slide);
         playCountUps(slide);
       }
+      paintSpeaker();
+      paintPresentBar();
       previous = i;
     };
   })();
+
+  /* === Present mode === */
+
+  // The deck is already a stack of full-viewport slides, so presenting is
+  // mostly a matter of getting out of its way: drop the chrome, stop editing,
+  // hide the scrollbars. Keeping it that simple is also what makes it work
+  // from a local file with no server and no permissions.
+  let presenting = false;
+
+  function slideTitle(slide) {
+    if (!slide) return '';
+    const el = slide.querySelector('[data-role="title"] .slide-object-text') ||
+      slide.querySelector('.slide-object-text');
+    return el ? el.textContent.trim().replace(/\s+/g, ' ').slice(0, 90) : '';
+  }
+
+  function setPresenting(on) {
+    if (!CHROME_ENABLED) return;
+    presenting = !!on;
+    document.body.classList.toggle('deck-presenting', presenting);
+    if (presenting) {
+      if (editor.active) editor.setActive(false);
+      deck.goTo(deck.current);
+    }
+    paintPresentBar();
+    paintSpeaker();
+  }
+
+  /* === Speaker window === */
+
+  // Opened by handle and driven directly rather than by messaging: a window
+  // reference works regardless of origin, which is what lets the speaker view
+  // run from a deck opened off a disk. There is no reliable cross-window close
+  // event either, so the handle is polled.
+  let speakerWin = null;
+  let speakerWatch = 0;
+  let presentStarted = 0;
+
+  const SPEAKER_CSS =
+    'body{margin:0;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;' +
+    'background:#111318;color:#f2f4f7;padding:20px;}' +
+    '.sv-top{display:flex;align-items:baseline;gap:16px;margin-bottom:14px}' +
+    '.sv-timer{font-size:34px;font-variant-numeric:tabular-nums;cursor:pointer}' +
+    '.sv-count{opacity:.6}' +
+    '.sv-next{opacity:.72;margin-bottom:14px}' +
+    '.sv-next b{opacity:.55;font-weight:600;text-transform:uppercase;letter-spacing:.1em;font-size:11px;display:block}' +
+    '.sv-notes{white-space:pre-wrap;font-size:17px;line-height:1.6;' +
+    'background:#191c23;border-radius:8px;padding:14px 16px;min-height:40vh}' +
+    '.sv-empty{opacity:.4}' +
+    '.sv-ctrls{margin-top:14px;display:flex;gap:6px}' +
+    '.sv-ctrls button{font:inherit;padding:6px 12px;border-radius:6px;cursor:pointer;' +
+    'border:1px solid #333a45;background:#20242c;color:inherit}';
+
+  function watchSpeaker() {
+    clearInterval(speakerWatch);
+    if (!speakerWin) return;
+    speakerWatch = window.setInterval(function () {
+      if (!speakerWin || speakerWin.closed) {
+        speakerWin = null;
+        clearInterval(speakerWatch);
+      }
+    }, 1000);
+  }
+
+  function openSpeaker() {
+    if (!CHROME_ENABLED) return;
+    if (speakerWin && !speakerWin.closed) { speakerWin.focus(); return; }
+    speakerWin = window.open('', 'deck-speaker', 'width=1100,height=760');
+    if (!speakerWin) {
+      console.warn('[deck] speaker window blocked — allow pop-ups for this page');
+      return;
+    }
+    const d = speakerWin.document;
+    d.title = (document.title || 'Deck') + ' — speaker view';
+    d.head.innerHTML = '<meta charset="utf-8"><style>' + SPEAKER_CSS + '</style>';
+    d.body.innerHTML =
+      '<div class="sv-top"><div class="sv-timer" title="Click to reset">00:00</div>' +
+      '<div class="sv-count"></div></div>' +
+      '<div class="sv-next"><b>Next</b><span></span></div>' +
+      '<div class="sv-notes"></div>' +
+      '<div class="sv-ctrls"><button data-nav="prev">‹ Previous</button>' +
+      '<button data-nav="next">Next ›</button></div>';
+
+    d.addEventListener('click', function (e) {
+      const nav = e.target.closest && e.target.closest('[data-nav]');
+      if (nav) deck.goTo(deck.current + (nav.getAttribute('data-nav') === 'next' ? 1 : -1));
+      else if (e.target.closest && e.target.closest('.sv-timer')) presentStarted = Date.now();
+    });
+    d.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') deck.goTo(deck.current + 1);
+      else if (e.key === 'ArrowLeft' || e.key === 'PageUp') deck.goTo(deck.current - 1);
+    });
+
+    if (!presentStarted) presentStarted = Date.now();
+    watchSpeaker();
+    paintSpeaker();
+  }
+
+  function paintPresentBar() {
+    const el = document.getElementById('deckPresentCount');
+    if (el) el.textContent = (deck.current + 1) + ' / ' + ((deck.slides || []).length || 1);
+  }
+
+  function paintSpeaker() {
+    if (!speakerWin || speakerWin.closed) return;
+    const d = speakerWin.document;
+    const slides = deck.slides || [];
+    const slide = slides[deck.current];
+    const notes = (slide && slide.getAttribute('data-notes')) || '';
+    const next = slideTitle(slides[deck.current + 1]);
+
+    const count = d.querySelector('.sv-count');
+    if (count) count.textContent = (deck.current + 1) + ' / ' + slides.length;
+    const nextEl = d.querySelector('.sv-next span');
+    if (nextEl) nextEl.textContent = next || '— end of deck —';
+    const notesEl = d.querySelector('.sv-notes');
+    if (notesEl) {
+      notesEl.textContent = notes || 'No notes on this slide.';
+      notesEl.classList.toggle('sv-empty', !notes);
+    }
+  }
+
+  setInterval(function () {
+    if (!speakerWin || speakerWin.closed || !presentStarted) return;
+    const el = speakerWin.document.querySelector('.sv-timer');
+    if (!el) return;
+    const s = Math.floor((Date.now() - presentStarted) / 1000);
+    el.textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+  }, 1000);
+
+  document.addEventListener('keydown', function (e) {
+    if (!CHROME_ENABLED) return;
+    if (e.target.closest && e.target.closest('[contenteditable="true"]')) return;
+    if (e.key === 'Escape' && presenting) { setPresenting(false); return; }
+    if ((e.key === 'p' || e.key === 'P') && !editor.active) { setPresenting(!presenting); return; }
+    if ((e.key === 's' || e.key === 'S') && presenting) openSpeaker();
+  });
 
   /* === Media === */
 
@@ -2002,6 +2158,16 @@
     });
     // Fields and roles sit on the text toolbar: mousedown, not click, so the
     // text selection survives the button press.
+    document.querySelectorAll('[data-present]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const what = btn.getAttribute('data-present');
+        if (what === 'start') setPresenting(true);
+        else if (what === 'exit') setPresenting(false);
+        else if (what === 'speaker') openSpeaker();
+        else if (what === 'prev') deck.goTo(deck.current - 1);
+        else if (what === 'next') deck.goTo(deck.current + 1);
+      });
+    });
     document.querySelectorAll('[data-field-insert]').forEach(function (btn) {
       btn.addEventListener('mousedown', function (e) {
         e.preventDefault();

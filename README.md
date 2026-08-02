@@ -2,11 +2,16 @@
 
 **Bring your own design. This makes it editable.**
 
-A drop-in runtime that turns a static HTML slide deck into an editable one, in
-the browser, with nothing installed. Drag and resize objects, edit text, manage
-pages, insert shapes, tables and charts, write speaker notes, export HTML or
-PDF. The deck stays a single self-contained file: send it, and the recipient
-gets the whole thing.
+A drop-in runtime that turns a static HTML slide deck into an editable one — and
+a presentable one — in the browser, with nothing installed. Drag and resize
+objects, edit text, manage pages, insert shapes, tables and charts, add motion,
+**press P to present and S for a speaker view with your notes and a timer**, and
+export HTML or PDF. All of it from a file on a disk, with no server: the deck
+stays a single self-contained file, so you send it and the recipient gets the
+whole thing.
+
+Embedded in someone else's viewer it **stands down** — chrome hidden, keys
+released — so it never fights its host. One attribute hands it back.
 
 The runtime has no opinion about how a deck looks. It is the same code whether
 the design is brutalist, pastel or terminal-green — what it needs is a
