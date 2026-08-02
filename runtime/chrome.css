@@ -869,3 +869,107 @@ body.deck-edit-mode .filmstrip-item .filmstrip-actions button {
 body.deck-edit-mode .filmstrip-item .filmstrip-actions button:hover { color: var(--ui-ink); }
 body.deck-edit-mode .filmstrip-item .filmstrip-num { margin-right: auto; }
 body.deck-edit-mode .slide-sidebar > .filmstrip-actions button { font-weight: 500; }
+
+/* ---------- Panels: collapse handles ----------
+   The tab on a panel's inner edge, the way Bento offers one on both sides. */
+.deck-panel-handle {
+  position: absolute; top: 50%; width: 16px; height: 46px; padding: 0;
+  display: none; align-items: center; justify-content: center;
+  border: 1px solid var(--ui-line); background: var(--ui-surface);
+  color: var(--ui-ink-2); cursor: pointer; z-index: 12; font-size: 12px;
+}
+body.deck-edit-mode .deck-panel-handle { display: flex; }
+.deck-panel-handle--left  { right: -17px; transform: translateY(-50%); border-radius: 0 7px 7px 0; border-left: 0; }
+.deck-panel-handle--right { left: -17px;  transform: translateY(-50%); border-radius: 7px 0 0 7px; border-right: 0; }
+.deck-panel-handle:hover { color: var(--ui-ink); background: var(--ui-hover); }
+
+body.deck-edit-mode.deck-hide-left  { --shell-left: 0px; }
+body.deck-edit-mode.deck-hide-right { --shell-right: 0px; }
+body.deck-hide-left  .slide-sidebar > *:not(.deck-panel-handle),
+body.deck-hide-right .deck-inspector > *:not(.deck-panel-handle) { display: none; }
+body.deck-hide-left  .slide-sidebar { width: 0; border-right: 0; }
+body.deck-hide-right .deck-inspector { width: 0; border-left: 0; }
+body.deck-hide-left  .deck-panel-handle--left  { right: -17px; }
+body.deck-hide-left  .deck-panel-handle--left::before { content: ''; }
+
+/* ---------- Filmstrip, Bento-style ---------- */
+body.deck-edit-mode .filmstrip-item { padding: 0; border-radius: 8px; overflow: visible; position: relative; }
+body.deck-edit-mode .filmstrip-thumb-host { position: relative; border-radius: 7px; background: transparent; }
+body.deck-edit-mode .filmstrip-num {
+  position: absolute; left: 5px; top: 5px; z-index: 3;
+  min-width: 17px; height: 17px; padding: 0 4px; border-radius: 4px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(20,21,24,0.72); color: #fff;
+  font-family: var(--ui-mono); font-size: 10px; line-height: 1;
+}
+body.deck-edit-mode .filmstrip-item .filmstrip-actions {
+  position: absolute; right: 4px; top: 4px; z-index: 4;
+  display: flex; gap: 3px; margin: 0; opacity: 0; transition: opacity 0.14s ease;
+}
+body.deck-edit-mode .filmstrip-item:hover .filmstrip-actions { opacity: 1; }
+body.deck-edit-mode .filmstrip-item .filmstrip-actions button {
+  width: 22px; height: 22px; padding: 0; font-size: 11px; line-height: 1;
+  border-radius: 5px; background: rgba(255,255,255,0.94);
+  border: 1px solid var(--ui-line); color: var(--ui-ink-2);
+}
+body.deck-edit-mode .filmstrip-item .filmstrip-actions button:hover { color: var(--ui-ink); background: #fff; }
+
+/* ---------- Inspector sections ---------- */
+.deck-sect { border-bottom: 1px solid var(--ui-line); padding-bottom: 12px; }
+.deck-sect:last-child { border-bottom: 0; }
+.deck-sect-head {
+  display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;
+  font-family: var(--ui-mono); font-size: var(--ui-label); letter-spacing: 0.11em;
+  text-transform: uppercase; color: var(--ui-ink-2); margin: 0 0 10px;
+}
+.deck-sect-caret {
+  width: 0; height: 0; flex: 0 0 auto;
+  border-left: 4px solid currentColor; border-top: 3.5px solid transparent; border-bottom: 3.5px solid transparent;
+  transform: rotate(90deg); transition: transform 0.15s ease;
+}
+.deck-sect.is-folded .deck-sect-caret { transform: rotate(0deg); }
+.deck-sect.is-folded .deck-sect-body { display: none; }
+.deck-sect-body { display: flex; flex-direction: column; gap: 12px; }
+.deck-sect-tools { margin-left: auto; display: flex; gap: 3px; }
+.deck-sect-tools button { width: 24px; height: 22px; padding: 0; font-size: 12px; }
+
+.deck-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.deck-grid2 label {
+  display: flex; align-items: center; gap: 5px;
+  font-family: var(--ui-mono); font-size: var(--ui-label); color: var(--ui-ink-2);
+}
+.deck-grid2 input {
+  flex: 1; min-width: 0; width: 100%; height: 26px; padding: 0 6px;
+  font-family: var(--ui-font); font-size: 12px; color: var(--ui-ink);
+  border: 1px solid var(--ui-line); border-radius: 5px; background: var(--ui-surface);
+}
+.deck-grid2 i { font-style: normal; opacity: 0.5; font-size: 10px; }
+.deck-inspector input[type="color"] {
+  width: 34px; height: 26px; padding: 2px; border: 1px solid var(--ui-line);
+  border-radius: 5px; background: var(--ui-surface); cursor: pointer;
+}
+.deck-inspector input[type="range"] { flex: 1; accent-color: var(--deck-chrome-accent, #1b1c1f); }
+.deck-inspector output { font-family: var(--ui-mono); font-size: 11px; color: var(--ui-ink-2); min-width: 26px; text-align: right; }
+.deck-inspector input[type="text"] {
+  width: 100%; height: 26px; padding: 0 7px; font-size: 12px;
+  border: 1px solid var(--ui-line); border-radius: 5px; background: var(--ui-surface); color: var(--ui-ink);
+}
+.deck-hint { margin: 0; font-size: 11px; line-height: 1.5; color: var(--ui-ink-2); }
+.deck-inspector [data-chart-type].active {
+  background: var(--deck-chrome-accent, var(--ui-ink)); border-color: transparent; color: #fff;
+}
+.deck-unit { font-style: normal; font-size: 10px; opacity: 0.55; }
+.deck-inspector input[type="number"] {
+  width: 68px; height: 26px; padding: 0 6px; font-size: 12px;
+  border: 1px solid var(--ui-line); border-radius: 5px; background: var(--ui-surface); color: var(--ui-ink);
+}
+.deck-inspector select { flex: 1; min-width: 0; }
+
+/* Done belongs to editing. It lived in the edit chrome, which hides itself on
+   exit; moving it to a plain row meant it stayed behind on the page. */
+body:not(.deck-edit-mode) .deck-btn-done { display: none; }
+
+/* Four arrange buttons wrapped 3 + 1 and read as a heap. Two labelled pairs,
+   each splitting the panel evenly. */
+.deck-split2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.deck-inspector .deck-split2 button { width: 100%; padding: 0 6px; }

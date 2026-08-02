@@ -79,6 +79,8 @@
 <nav class="nav-dots" id="navDots" aria-label="Slides"></nav>
 
 <aside class="slide-sidebar" id="slideSidebar" aria-label="Slide pages">
+  <button type="button" class="deck-panel-handle deck-panel-handle--left" data-panel-toggle="left"
+          aria-label="Hide slides" title="Hide slides">&lsaquo;</button>
   <h3>Slides</h3>
   <div class="filmstrip-list" id="filmstripList"></div>
   <div class="filmstrip-actions" style="margin-top:auto;flex-direction:column;gap:6px;">
@@ -92,26 +94,105 @@
 
 <!-- Inspector: page-level and selection-level properties, right-hand side -->
 <aside class="deck-inspector" id="deckInspector" data-deck-chrome-surface="" aria-label="Properties">
-  <div>
-    <h4>Speaker notes</h4>
-    <textarea id="slideNotes" class="slide-notes" rows="7"
-      placeholder="Notes for this slide — saved in the file, so they travel with it."></textarea>
-  </div>
-  <div id="inspectorSelection">
-    <h4>Selection</h4>
-    <p class="deck-inspector-empty" id="inspectorEmpty">Select an object to set its role and motion.</p>
-    <div class="deck-inspector-fields" id="inspectorFields" hidden>
-      <div class="deck-field" role="group" aria-label="Role">
-        <span class="deck-field-label">Role</span>
+  <button type="button" class="deck-panel-handle deck-panel-handle--right" data-panel-toggle="right"
+          aria-label="Hide properties" title="Hide properties">&rsaquo;</button>
+
+  <!-- selection sections: shown only when an object is selected -->
+  <section class="deck-sect" id="sectSelection" hidden>
+    <h4 class="deck-sect-head" data-fold><span class="deck-sect-caret"></span><span id="sectSelectionName">Selection</span>
+      <span class="deck-sect-tools">
+        <button type="button" data-obj="duplicate" title="Duplicate (Ctrl+D)" aria-label="Duplicate">⧉</button>
+        <button type="button" data-obj="delete" title="Delete" aria-label="Delete">🗑</button>
+      </span>
+    </h4>
+    <div class="deck-sect-body">
+      <div class="deck-field"><span class="deck-field-label">Role</span>
         <div class="deck-field-row">
-          <button type="button" data-role-set="title" title="Mark as the title">Title</button>
-          <button type="button" data-role-set="subtitle" title="Mark as the subtitle">Subtitle</button>
-          <button type="button" data-role-set="body" title="Mark as body text">Body</button>
-          <button type="button" data-role-set="kicker" title="Mark as a kicker">Kicker</button>
+          <button type="button" data-role-set="title">Title</button>
+          <button type="button" data-role-set="subtitle">Subtitle</button>
+          <button type="button" data-role-set="body">Body</button>
+          <button type="button" data-role-set="kicker">Kicker</button>
         </div>
       </div>
-      <div class="deck-field" role="group" aria-label="Motion">
-        <span class="deck-field-label">Entrance</span>
+    </div>
+  </section>
+
+  <section class="deck-sect" id="sectGeometry" hidden>
+    <h4 class="deck-sect-head" data-fold><span class="deck-sect-caret"></span>Size &amp; arrange</h4>
+    <div class="deck-sect-body">
+      <div class="deck-grid2">
+        <label>W <input type="number" data-geom="width" step="0.5"><i>%</i></label>
+        <label>H <input type="number" data-geom="height" step="0.5"><i>%</i></label>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Opacity</span>
+        <div class="deck-field-row"><input type="range" data-geom="opacity" min="0" max="100" step="1"><output data-geom-out="opacity">100</output></div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Order</span>
+        <div class="deck-field-row deck-split2">
+          <button type="button" data-arrange="front" title="Bring to front">Bring to front</button>
+          <button type="button" data-arrange="back" title="Send to back">Send to back</button>
+        </div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Centre on the slide</span>
+        <div class="deck-field-row deck-split2">
+          <button type="button" data-arrange="hcenter" title="Centre horizontally">Horizontally</button>
+          <button type="button" data-arrange="vcenter" title="Centre vertically">Vertically</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="deck-sect" id="sectText" hidden>
+    <h4 class="deck-sect-head" data-fold><span class="deck-sect-caret"></span>Typography</h4>
+    <div class="deck-sect-body">
+      <div class="deck-field"><span class="deck-field-label">Font</span>
+        <div class="deck-field-row">
+          <select data-text-font aria-label="Font"><option value="">Inherit</option></select>
+        </div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Size</span>
+        <div class="deck-field-row">
+          <input type="number" data-text-size min="6" max="400" step="1"><i class="deck-unit">px</i>
+        </div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Colour</span>
+        <div class="deck-field-row"><input type="color" data-text-colour><button type="button" data-text-colour-reset>Reset</button></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="deck-sect" id="sectTable" hidden>
+    <h4 class="deck-sect-head" data-fold><span class="deck-sect-caret"></span>Table</h4>
+    <div class="deck-sect-body">
+      <div class="deck-field"><span class="deck-field-label">Rows</span>
+        <div class="deck-field-row"><button type="button" data-table="row+">Add</button><button type="button" data-table="row-">Remove</button></div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Columns</span>
+        <div class="deck-field-row"><button type="button" data-table="col+">Add</button><button type="button" data-table="col-">Remove</button></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="deck-sect" id="sectChart" hidden>
+    <h4 class="deck-sect-head" data-fold><span class="deck-sect-caret"></span>Chart</h4>
+    <div class="deck-sect-body">
+      <div class="deck-field"><span class="deck-field-label">Type</span>
+        <div class="deck-field-row">
+          <button type="button" data-chart-type="bar">Bar</button>
+          <button type="button" data-chart-type="line">Line</button>
+          <button type="button" data-chart-type="pie">Pie</button>
+        </div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Data</span>
+        <div class="deck-field-row"><input type="text" data-chart-data-input placeholder="Q1 12, Q2 18"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="deck-sect" id="sectMotion" hidden>
+    <h4 class="deck-sect-head" data-fold><span class="deck-sect-caret"></span>Motion</h4>
+    <div class="deck-sect-body">
+      <div class="deck-field"><span class="deck-field-label">Entrance</span>
         <div class="deck-field-row">
           <select data-fx-enter-set aria-label="Entrance animation">
             <option value="">None</option>
@@ -125,14 +206,31 @@
           </select>
         </div>
       </div>
-      <div class="deck-field" role="group" aria-label="Numbers">
-        <span class="deck-field-label">Numbers</span>
-        <div class="deck-field-row">
-          <button type="button" data-fx-countup-toggle title="Animate the numbers in this object from zero">Count up from zero</button>
-        </div>
+      <div class="deck-field"><span class="deck-field-label">Numbers</span>
+        <div class="deck-field-row"><button type="button" data-fx-countup-toggle>Count up from zero</button></div>
       </div>
+      <p class="deck-hint" id="morphHint" hidden></p>
     </div>
-  </div>
+  </section>
+
+  <!-- slide sections: always shown -->
+  <section class="deck-sect" id="sectSlide">
+    <h4 class="deck-sect-head" data-fold><span class="deck-sect-caret"></span>Slide</h4>
+    <div class="deck-sect-body">
+      <div class="deck-field"><span class="deck-field-label">Background</span>
+        <div class="deck-field-row"><input type="color" data-slide-bg><button type="button" data-slide-bg-reset>Reset</button></div>
+      </div>
+      <p class="deck-hint" id="slidePos"></p>
+    </div>
+  </section>
+
+  <section class="deck-sect" id="sectNotes">
+    <h4 class="deck-sect-head" data-fold><span class="deck-sect-caret"></span>Speaker notes</h4>
+    <div class="deck-sect-body">
+      <textarea id="slideNotes" class="slide-notes" rows="6"
+        placeholder="Notes for this slide — saved in the file, so they travel with it."></textarea>
+    </div>
+  </section>
 </aside>
 
 <div class="rte-toolbar" id="rteToolbar" role="toolbar" aria-label="Text format" data-deck-chrome-surface="">

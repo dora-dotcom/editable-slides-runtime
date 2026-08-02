@@ -803,23 +803,26 @@
         actions.className = 'filmstrip-actions';
         const num = document.createElement('span');
         num.className = 'filmstrip-num';
-        num.textContent = 'Slide ' + (idx + 1);
+        num.textContent = String(idx + 1);
+        host.appendChild(num);
         const dup = document.createElement('button');
         dup.type = 'button';
-        dup.textContent = 'Duplicate';
+        dup.innerHTML = '&#9109;';
         dup.title = 'Duplicate this slide';
+        dup.setAttribute('aria-label', 'Duplicate slide');
         dup.addEventListener('click', (ev) => {
           ev.stopPropagation();
           this._addSlide(idx, true);
         });
         const del = document.createElement('button');
         del.type = 'button';
-        del.textContent = 'Delete';
+        del.innerHTML = '&#128465;';
+        del.title = 'Delete this slide';
+        del.setAttribute('aria-label', 'Delete slide');
         del.addEventListener('click', (ev) => {
           ev.stopPropagation();
           this._deleteSlide(idx);
         });
-        actions.appendChild(num);
         actions.appendChild(dup);
         actions.appendChild(del);
 
@@ -2221,6 +2224,279 @@
     });
   })();
 
+
+  /* === Inspector === */
+
+  // Bento's panel is a stack of folding sections that change with what is
+  // selected. Ours takes the same shape but only the sections we can actually
+  // back: geometry, arrange, colour, the table and chart controls that were
+  // floating beside their objects, and motion. Their Effects, Fill & stroke,
+  // Interactivity, Layout and Advanced (JSON) sections are deliberately absent
+  // — we have nothing behind them yet, and an empty control is worse than none.
+
+  function selectedObject() { return document.querySelector('.slide-object.is-selected'); }
+  function currentSlide() { return (deck.slides || [])[deck.current] || null; }
+
+  function pct(el, prop) {
+    const m = (el.style[prop] || '').match(/^([\d.]+)%$/);
+    return m ? parseFloat(m[1]) : null;
+  }
+
+  function pushAttr(apply, before, after) {
+    apply(after);
+    history.push({ undo: function () { apply(before); syncInspector(); },
+                   redo: function () { apply(after); syncInspector(); } });
+    updateUndoRedoChrome();
+  }
+
+  // Folding sections.
+  document.addEventListener('click', function (e) {
+    const head = e.target.closest && e.target.closest('.deck-sect-head[data-fold]');
+    if (!head || e.target.closest('.deck-sect-tools')) return;
+    head.parentElement.classList.toggle('is-folded');
+  });
+
+  // Panel collapse, the handles on the inside edge of each panel.
+  document.addEventListener('click', function (e) {
+    const h = e.target.closest && e.target.closest('[data-panel-toggle]');
+    if (!h) return;
+    const which = h.getAttribute('data-panel-toggle');
+    document.body.classList.toggle('deck-hide-' + which);
+  });
+
+  // The font list is read off the document: whatever --font-* it defines is
+  // what it offers. A deck should never be handed a font its design does not
+  // know about.
+  let fontChoices = null;
+  function documentFonts() {
+    if (fontChoices) return fontChoices;
+    const cs = getComputedStyle(document.documentElement);
+    fontChoices = [];
+    ['display', 'body', 'mono'].forEach(function (key) {
+      const value = cs.getPropertyValue('--font-' + key).trim();
+      if (value) fontChoices.push({ label: key.charAt(0).toUpperCase() + key.slice(1), value: 'var(--font-' + key + ')' });
+    });
+    return fontChoices;
+  }
+
+  (function () {
+    const sel = document.querySelector('[data-text-font]');
+    if (!sel) return;
+    documentFonts().forEach(function (f) {
+      const o = document.createElement('option');
+      o.value = f.value; o.textContent = f.label;
+      sel.appendChild(o);
+    });
+  })();
+
+  document.addEventListener('change', function (e) {
+    const sel = e.target.closest && e.target.closest('[data-text-font]');
+    if (!sel) return;
+    const t = selectedObject() && selectedObject().querySelector('.slide-object-text');
+    if (t) t.style.fontFamily = sel.value;
+  });
+  document.addEventListener('input', function (e) {
+    const f = e.target.closest && e.target.closest('[data-text-size]');
+    if (!f) return;
+    const t = selectedObject() && selectedObject().querySelector('.slide-object-text');
+    const v = parseFloat(f.value);
+    if (t && !isNaN(v)) t.style.fontSize = v + 'px';
+  });
+
+  function syncInspector() {
+    const obj = selectedObject();
+    const type = obj ? obj.getAttribute('data-object-type') : null;
+
+    const show = function (id, on) {
+      const el = document.getElementById(id);
+      if (el) el.hidden = !on;
+    };
+    show('sectSelection', !!obj);
+    show('sectGeometry', !!obj);
+    show('sectMotion', !!obj);
+    show('sectText', type === 'text');
+    show('sectTable', type === 'table');
+    show('sectChart', type === 'chart');
+
+    const name = document.getElementById('sectSelectionName');
+    if (name) name.textContent = type ? type.charAt(0).toUpperCase() + type.slice(1) : 'Selection';
+
+    document.querySelectorAll('[data-role-set]').forEach(function (b) {
+      b.classList.toggle('active', !!obj && b.getAttribute('data-role-set') === obj.getAttribute('data-role'));
+    });
+    const fx = document.querySelector('[data-fx-enter-set]');
+    if (fx) fx.value = (obj && obj.getAttribute('data-fx-enter')) || '';
+    const cu = document.querySelector('[data-fx-countup-toggle]');
+    if (cu) cu.classList.toggle('active', !!obj && obj.hasAttribute('data-fx-countup'));
+
+    if (obj) {
+      ['width', 'height'].forEach(function (k) {
+        const f = document.querySelector('[data-geom="' + k + '"]');
+        if (f && document.activeElement !== f) {
+          const v = pct(obj, k);
+          f.value = v === null ? '' : Math.round(v * 10) / 10;
+        }
+      });
+      const op = document.querySelector('[data-geom="opacity"]');
+      const opv = Math.round((parseFloat(obj.style.opacity || '1')) * 100);
+      if (op && document.activeElement !== op) op.value = opv;
+      const opo = document.querySelector('[data-geom-out="opacity"]');
+      if (opo) opo.textContent = opv;
+
+      if (type === 'chart') {
+        const di = document.querySelector('[data-chart-data-input]');
+        if (di && document.activeElement !== di) di.value = obj.getAttribute('data-chart-data') || '';
+        document.querySelectorAll('[data-chart-type]').forEach(function (b) {
+          b.classList.toggle('active', b.getAttribute('data-chart-type') === obj.getAttribute('data-chart'));
+        });
+      }
+      if (type === 'text') {
+        const c = document.querySelector('[data-text-colour]');
+        const t = obj.querySelector('.slide-object-text');
+        const fs = document.querySelector('[data-text-size]');
+        if (fs && t && document.activeElement !== fs) {
+          fs.value = Math.round(parseFloat(getComputedStyle(t).fontSize) || 0);
+        }
+        const ff = document.querySelector('[data-text-font]');
+        if (ff && t && document.activeElement !== ff) {
+          const inline = (t.style.fontFamily || '').trim();
+          ff.value = documentFonts().some(function (f) { return f.value === inline; }) ? inline : '';
+        }
+        if (c && t) {
+          const rgb = getComputedStyle(t).color.match(/\d+/g);
+          if (rgb) c.value = '#' + rgb.slice(0, 3).map(function (n) {
+            return ('0' + parseInt(n, 10).toString(16)).slice(-2);
+          }).join('');
+        }
+      }
+      // Ours morphs by shared oid, so the panel can simply say when it will.
+      const hint = document.getElementById('morphHint');
+      if (hint) {
+        const oid = obj.getAttribute('data-oid');
+        const slides = deck.slides || [];
+        const twins = [];
+        slides.forEach(function (sl, i) {
+          if (i !== deck.current && sl.querySelector('[data-oid="' + CSS.escape(oid) + '"]')) twins.push(i + 1);
+        });
+        hint.hidden = !twins.length;
+        hint.textContent = twins.length
+          ? 'Shares an id with slide ' + twins.join(', ') + ' — it will morph between them.'
+          : '';
+      }
+    }
+
+    const slide = currentSlide();
+    const pos = document.getElementById('slidePos');
+    if (pos && slide) pos.textContent = 'Slide ' + (deck.current + 1) + ' of ' + (deck.slides || []).length;
+    const bg = document.querySelector('[data-slide-bg]');
+    if (bg && slide && document.activeElement !== bg) {
+      const rgb = getComputedStyle(slide).backgroundColor.match(/\d+/g);
+      if (rgb) bg.value = '#' + rgb.slice(0, 3).map(function (n) {
+        return ('0' + parseInt(n, 10).toString(16)).slice(-2);
+      }).join('');
+    }
+  }
+
+  // Geometry fields write straight to the inline percentages the runtime uses.
+  document.addEventListener('input', function (e) {
+    const f = e.target.closest && e.target.closest('[data-geom]');
+    if (!f) return;
+    const obj = selectedObject();
+    if (!obj) return;
+    const k = f.getAttribute('data-geom');
+    if (k === 'opacity') {
+      obj.style.opacity = String((parseFloat(f.value) || 0) / 100);
+      const out = document.querySelector('[data-geom-out="opacity"]');
+      if (out) out.textContent = f.value;
+    } else {
+      const v = parseFloat(f.value);
+      if (!isNaN(v)) obj.style[k] = v + '%';
+    }
+  });
+
+  document.addEventListener('click', function (e) {
+    const b = e.target.closest && e.target.closest('[data-arrange]');
+    if (!b) return;
+    const obj = selectedObject();
+    if (!obj) return;
+    const what = b.getAttribute('data-arrange');
+    const parent = obj.parentNode;
+    const before = { next: obj.nextElementSibling, left: obj.style.left, top: obj.style.top };
+    const apply = function (state) {
+      if (state.hasOwnProperty('next')) {
+        if (state.next) parent.insertBefore(obj, state.next); else parent.appendChild(obj);
+      }
+      if (state.left !== undefined) obj.style.left = state.left;
+      if (state.top !== undefined) obj.style.top = state.top;
+    };
+    let after;
+    if (what === 'front') { parent.appendChild(obj); after = { next: null }; }
+    else if (what === 'back') { parent.insertBefore(obj, parent.firstElementChild); after = { next: parent.children[1] }; }
+    else if (what === 'hcenter') { const w = pct(obj, 'width') || 0; obj.style.left = ((100 - w) / 2) + '%'; after = { left: obj.style.left }; }
+    else { const h = pct(obj, 'height') || 0; obj.style.top = ((100 - h) / 2) + '%'; after = { top: obj.style.top }; }
+    history.push({ undo: function () { apply(before); syncInspector(); }, redo: function () { apply(after); syncInspector(); } });
+    updateUndoRedoChrome();
+    syncInspector();
+  });
+
+  document.addEventListener('input', function (e) {
+    const c = e.target.closest && e.target.closest('[data-text-colour]');
+    if (!c) return;
+    const t = selectedObject() && selectedObject().querySelector('.slide-object-text');
+    if (t) t.style.color = c.value;
+  });
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest || !e.target.closest('[data-text-colour-reset]')) return;
+    const t = selectedObject() && selectedObject().querySelector('.slide-object-text');
+    if (t) { t.style.color = ''; syncInspector(); }
+  });
+
+  document.addEventListener('input', function (e) {
+    const c = e.target.closest && e.target.closest('[data-slide-bg]');
+    if (!c) return;
+    const slide = currentSlide();
+    if (slide) slide.style.background = c.value;
+  });
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest || !e.target.closest('[data-slide-bg-reset]')) return;
+    const slide = currentSlide();
+    if (slide) { slide.style.background = ''; syncInspector(); }
+  });
+
+  document.addEventListener('input', function (e) {
+    const i = e.target.closest && e.target.closest('[data-chart-data-input]');
+    if (!i) return;
+    const obj = selectedObject();
+    if (!obj || obj.getAttribute('data-object-type') !== 'chart') return;
+    obj.setAttribute('data-chart-data', i.value);
+    paintChart(obj);
+  });
+
+  document.addEventListener('click', function (e) {
+    const b = e.target.closest && e.target.closest('[data-obj]');
+    if (!b) return;
+    const obj = selectedObject();
+    if (!obj) return;
+    const parent = obj.parentNode;
+    if (b.getAttribute('data-obj') === 'delete') {
+      const next = obj.nextElementSibling;
+      obj.remove();
+      history.push({ undo: function () { parent.insertBefore(obj, next); }, redo: function () { obj.remove(); } });
+    } else {
+      const copy = obj.cloneNode(true);
+      copy.setAttribute('data-oid', mintOid(obj.getAttribute('data-object-type') || 'obj'));
+      copy.style.left = ((pct(obj, 'left') || 0) + 3) + '%';
+      copy.style.top = ((pct(obj, 'top') || 0) + 3) + '%';
+      parent.appendChild(copy);
+      ensureResizeHandles(parent);
+      ensureObjectControls(parent);
+      repaintCharts(parent);
+      history.push({ undo: function () { copy.remove(); }, redo: function () { parent.appendChild(copy); } });
+    }
+    updateUndoRedoChrome();
+    syncInspector();
+  });
+
   /* === Slide actions === */
 
   (function () {
@@ -2326,14 +2602,6 @@
       });
     }
   })();
-
-  function syncInspector() {
-    const obj = document.querySelector('.slide-object.is-selected');
-    const fields = document.getElementById('inspectorFields');
-    const empty = document.getElementById('inspectorEmpty');
-    if (fields) fields.hidden = !obj;
-    if (empty) empty.hidden = !!obj;
-  }
 
   function syncMotionControls() {
     syncInspector();
