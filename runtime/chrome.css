@@ -387,3 +387,197 @@ body.deck-presenting .slides-offset { padding: 0 !important; }
    runtime having to compute offsets, and it catches a stray wheel too. */
 body.deck-presenting { scroll-snap-type: y mandatory; }
 body.deck-presenting section.slide { scroll-snap-align: start; scroll-snap-stop: always; }
+
+/* ---------- Insert menu ----------
+   The edit bar was built for three controls and grew to fifteen; it overflowed
+   and scrolled. Insert collapses back into one button. */
+.deck-menu { position: relative; display: inline-flex; }
+.deck-menu-btn {
+  font: inherit; font-size: clamp(0.7rem, 1.1vw, 0.82rem);
+  padding: 6px 12px; border-radius: 8px; cursor: pointer; white-space: nowrap;
+  border: 1px solid var(--deck-chrome-border, rgba(0,0,0,0.15));
+  background: transparent; color: inherit;
+}
+.deck-menu-btn::after { content: ' ▾'; opacity: 0.55; }
+.deck-menu.open .deck-menu-btn { background: var(--deck-chrome-bg, rgba(0,0,0,0.05)); }
+.deck-menu-list {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 10002;
+  display: none; flex-direction: column; min-width: 170px; padding: 5px;
+  border-radius: 10px; background: var(--deck-chrome-surface, #fff);
+  border: 1px solid var(--deck-chrome-border, rgba(0,0,0,0.15));
+  box-shadow: var(--deck-chrome-shadow, 0 8px 26px rgba(0,0,0,0.16));
+}
+.deck-menu.open .deck-menu-list { display: flex; }
+.deck-menu-list > button {
+  font: inherit; font-size: 0.8rem; text-align: left; padding: 7px 10px;
+  border: 0; border-radius: 6px; background: transparent; color: inherit; cursor: pointer;
+}
+.deck-menu-list > button:hover { background: var(--deck-chrome-bg, rgba(0,0,0,0.06)); }
+.deck-menu-sep { height: 1px; margin: 5px 6px; background: var(--deck-chrome-border, rgba(0,0,0,0.12)); }
+.deck-menu-shapes { display: flex; gap: 4px; padding: 2px 6px 4px; }
+.deck-menu-shapes button {
+  flex: 1; padding: 6px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--deck-chrome-border, rgba(0,0,0,0.15));
+  background: transparent; color: inherit;
+}
+.deck-menu-shapes button:hover { background: var(--deck-chrome-bg, rgba(0,0,0,0.06)); }
+.deck-menu-shapes svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
+
+/* ---------- Contextual object toolbar ----------
+   Motion applies to any object, so it lives beside the selection rather than
+   in the global bar. Text-only groups hide when the selection is not text. */
+.rte-toolbar { flex-wrap: wrap; max-width: min(560px, 92vw); }
+.rte-toolbar select[data-fx-enter-set] {
+  font: inherit; font-size: 11px; padding: 2px 4px; border-radius: 4px; max-width: 120px;
+  border: 1px solid var(--deck-chrome-border, rgba(0,0,0,0.15));
+  background: transparent; color: inherit;
+}
+.rte-toolbar [data-fx-countup-toggle].active {
+  background: var(--deck-chrome-accent, rgba(0,0,0,0.12));
+  color: var(--deck-chrome-surface, #fff);
+}
+
+/* ============================================================
+   EDIT SHELL — the layout Google Slides and Bento both use
+   ============================================================
+   Outside edit mode the deck is the page: full-bleed, no chrome, which is
+   what makes a deck a deck. The moment you edit, that is the wrong shape —
+   floating controls have nowhere to live and end up on top of the content.
+   So editing puts the deck inside a frame: a top bar, a filmstrip on the
+   left, the slide letterboxed in the middle, an inspector on the right.
+   Leaving edit mode takes the frame away again. */
+
+body.deck-edit-mode {
+  --shell-top: 52px;
+  --shell-left: 190px;
+  --shell-right: 250px;
+  overflow: hidden;
+  background: var(--deck-chrome-bg, #f2f2f0);
+}
+
+/* --- top bar --- */
+body.deck-edit-mode .deck-left-hover-anchor {
+  position: fixed; inset: 0 0 auto 0; height: var(--shell-top);
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 12px; z-index: 9800;
+  background: var(--deck-chrome-surface, #fff);
+  border-bottom: 1px solid var(--deck-chrome-border, rgba(0,0,0,0.12));
+  flex-direction: row;
+}
+body.deck-edit-mode .deck-left-row { display: flex; align-items: center; gap: 6px; }
+body.deck-edit-mode .deck-left-row--tools { margin-left: auto; }
+/* In the shell the buttons are always there — no hover reveal to hunt for. */
+body.deck-edit-mode .edit-toggle,
+body.deck-edit-mode .sidebar-pages-toggle,
+body.deck-edit-mode .deck-btn-save { opacity: 1 !important; pointer-events: auto !important; }
+body.deck-edit-mode .edit-toggle { display: none; }
+
+/* --- filmstrip moves to the left, always open --- */
+body.deck-edit-mode .slide-sidebar {
+  top: var(--shell-top); left: 0; right: auto; bottom: 0;
+  width: var(--shell-left); transform: none !important;
+  border-left: 0; border-right: 1px solid var(--deck-chrome-border, rgba(0,0,0,0.12));
+  background: var(--deck-chrome-surface, #fff);
+}
+body.deck-edit-mode .slide-notes-block,
+body.deck-edit-mode .filmstrip-actions { display: none; }
+
+/* --- the canvas: the deck, letterboxed and scaled to fit --- */
+body.deck-edit-mode .slides-offset {
+  position: fixed;
+  top: var(--shell-top); left: var(--shell-left); right: var(--shell-right); bottom: 0;
+  padding: 0 !important; overflow-y: auto; overflow-x: hidden;
+  background:
+    radial-gradient(var(--deck-chrome-border, rgba(0,0,0,0.14)) 1px, transparent 1px) 0 0 / 22px 22px,
+    var(--deck-chrome-bg, #eeeeec);
+  scroll-snap-type: y mandatory;
+}
+body.deck-edit-mode .slides-offset > section.slide {
+  scroll-snap-align: center;
+  width: calc(100vw - var(--shell-left) - var(--shell-right) - 56px);
+  height: calc((100vw - var(--shell-left) - var(--shell-right) - 56px) * 0.5625);
+  margin: 28px auto;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.16);
+  border-radius: 3px;
+}
+
+/* --- inspector --- */
+.deck-inspector {
+  position: fixed; top: var(--shell-top); right: 0; bottom: 0; width: var(--shell-right);
+  display: none; flex-direction: column; gap: 14px; padding: 14px 12px; overflow-y: auto;
+  z-index: 9500; background: var(--deck-chrome-surface, #fff);
+  border-left: 1px solid var(--deck-chrome-border, rgba(0,0,0,0.12));
+  font-family: var(--font-body, inherit); color: var(--deck-chrome-text, inherit);
+}
+body.deck-edit-mode .deck-inspector { display: flex; }
+.deck-inspector h4 {
+  margin: 0 0 6px; font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--deck-chrome-muted, #6b7280);
+}
+.deck-inspector .slide-notes { min-height: 150px; }
+.deck-inspector-empty { font-size: 12px; color: var(--deck-chrome-muted, #6b7280); }
+
+/* Selection properties live in the inspector, stacked, not crammed in a row. */
+.deck-inspector-fields { display: flex; flex-direction: column; gap: 10px; }
+.deck-field { display: flex; flex-direction: column; gap: 5px; }
+.deck-field-label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--deck-chrome-muted, #6b7280);
+}
+.deck-field-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.deck-inspector-fields button, .deck-inspector-fields select {
+  flex: 0 0 auto;
+  font: inherit; font-size: 11px; padding: 4px 8px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--deck-chrome-border, rgba(0,0,0,0.15));
+  background: transparent; color: inherit;
+}
+.deck-inspector-fields select { flex: 1; min-width: 120px; }
+.deck-inspector-fields [data-role-set].active,
+.deck-inspector-fields [data-fx-countup-toggle].active {
+  background: var(--deck-chrome-accent, rgba(0,0,0,0.12));
+  color: var(--deck-chrome-surface, #fff);
+}
+
+/* The shell has no hover corner to reveal the tools, so they are simply there.
+   Reaching for a control should not require discovering it first. */
+body.deck-edit-mode .deck-edit-chrome {
+  opacity: 1; pointer-events: auto;
+  border: 0; background: transparent; box-shadow: none; padding: 0;
+}
+body.deck-edit-mode .deck-btn-present { opacity: 1 !important; pointer-events: auto !important; display: inline-flex; }
+/* [hidden] has to win over the panel's own display rule. */
+.deck-inspector-fields[hidden] { display: none; }
+/* Numbered thumbnails, the way every deck editor numbers them. */
+body.deck-edit-mode .filmstrip-num { display: inline-block; }
+
+/* The top bar lays out left to right; nothing in it should be squeezed. */
+body.deck-edit-mode .deck-left-hover-anchor > * { flex: 0 0 auto; }
+body.deck-edit-mode .deck-left-row { gap: 8px; flex-wrap: nowrap; }
+body.deck-edit-mode .deck-left-row > * { flex: 0 0 auto; }
+body.deck-edit-mode .deck-edit-chrome > * { flex: 0 0 auto; }
+
+/* The 36px square is for the icon buttons (undo, redo). Anything with a word
+   in it sizes to the word — otherwise the label overflows its own box and
+   reads as two controls colliding. */
+.deck-edit-chrome button.deck-menu-btn,
+.deck-edit-chrome button.deck-btn-present,
+.deck-edit-chrome button.deck-btn-done,
+.deck-menu-list button,
+.deck-menu-shapes button {
+  width: auto; min-width: 0; padding: 0 12px; white-space: nowrap;
+}
+.deck-menu-list button { height: auto; padding: 7px 10px; justify-content: flex-start; }
+.deck-menu-shapes button { padding: 6px; height: 32px; }
+
+/* The top bar and anything hanging off it (the Insert menu) must sit above the
+   side panels — a menu that opens behind the inspector reads as broken. */
+body.deck-edit-mode .deck-left-hover-anchor { z-index: 10000; }
+body.deck-edit-mode .deck-inspector,
+body.deck-edit-mode .slide-sidebar { z-index: 9000; }
+
+/* A dropdown has to escape the bar it hangs from. */
+body.deck-edit-mode .deck-left-hover-anchor,
+body.deck-edit-mode .deck-left-row,
+body.deck-edit-mode .deck-edit-chrome { overflow: visible; }

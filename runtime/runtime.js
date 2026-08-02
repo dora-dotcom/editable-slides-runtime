@@ -628,13 +628,16 @@
 
     _updateRteToolbar() {
       if (!this.active) return;
-      const inside = this._activeTextEl();
-      if (!inside) {
+      // Text formatting stays floating: it belongs against the selection,
+      // where you can see what it applies to. Everything else moved to the
+      // inspector, so this shows for text and nothing else.
+      const anchor = this._activeTextEl();
+      if (!anchor) {
         this.toolbar.classList.remove('visible');
         return;
       }
       const sel = document.getSelection();
-      let rr = inside.getBoundingClientRect();
+      let rr = anchor.getBoundingClientRect();
       if (sel && sel.rangeCount) {
         const r = sel.getRangeAt(0).getBoundingClientRect();
         if (r.width > 1 && r.height > 1) rr = r;
@@ -2216,14 +2219,56 @@
     }
   })();
 
+  function syncInspector() {
+    const obj = document.querySelector('.slide-object.is-selected');
+    const fields = document.getElementById('inspectorFields');
+    const empty = document.getElementById('inspectorEmpty');
+    if (fields) fields.hidden = !obj;
+    if (empty) empty.hidden = !!obj;
+  }
+
   function syncMotionControls() {
+    syncInspector();
     const obj = document.querySelector('.slide-object.is-selected');
     const sel = document.querySelector('[data-fx-enter-set]');
     const btn = document.querySelector('[data-fx-countup-toggle]');
     if (sel) sel.value = (obj && obj.getAttribute('data-fx-enter')) || '';
     if (btn) btn.classList.toggle('active', !!(obj && obj.hasAttribute('data-fx-countup')));
   }
-  document.addEventListener('click', syncMotionControls, true);
+  document.addEventListener('click', function () {
+    syncMotionControls();
+    if (editor.active) editor._updateRteToolbar();
+  }, true);
+
+  // Insert menu open/close.
+  (function () {
+    const menus = Array.prototype.slice.call(document.querySelectorAll('.deck-menu'));
+    if (!menus.length) return;
+    function closeAll(except) {
+      menus.forEach(function (m) {
+        if (m !== except) {
+          m.classList.remove('open');
+          const b = m.querySelector('[data-menu-toggle]');
+          if (b) b.setAttribute('aria-expanded', 'false');
+        }
+      });
+    }
+    menus.forEach(function (menu) {
+      const btn = menu.querySelector('[data-menu-toggle]');
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        const open = !menu.classList.contains('open');
+        closeAll(menu);
+        menu.classList.toggle('open', open);
+        btn.setAttribute('aria-expanded', String(open));
+      });
+      menu.addEventListener('click', function (e) {
+        if (e.target.closest('[data-insert], [data-shape]')) closeAll(null);
+      });
+    });
+    document.addEventListener('click', function () { closeAll(null); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeAll(null); });
+  })();
 
   /* === Image features === */
 
