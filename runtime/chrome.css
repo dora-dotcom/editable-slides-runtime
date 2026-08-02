@@ -1005,3 +1005,48 @@ body.deck-edit-mode .filmstrip-item.is-skipped .filmstrip-num {
   font-size: 12px; color: var(--ui-ink);
 }
 .deck-check input { accent-color: var(--deck-chrome-accent, #1b1c1f); }
+
+/* ---------- Slide number: bottom-left, and quiet ----------
+   Top-left put it on top of the title, and near-black fought a palette the
+   chrome is meant to stay out of the way of. */
+body.deck-edit-mode .filmstrip-num {
+  left: 6px; top: auto; bottom: 6px;
+  background: color-mix(in srgb, var(--ui-surface) 82%, transparent);
+  color: var(--ui-ink-2); border: 1px solid var(--ui-line);
+  backdrop-filter: blur(3px);
+}
+body.deck-edit-mode .filmstrip-item.is-current .filmstrip-num {
+  color: var(--ui-ink); border-color: color-mix(in srgb, var(--deck-chrome-accent, #1b1c1f) 45%, var(--ui-line));
+}
+body.deck-edit-mode .filmstrip-item.is-skipped .filmstrip-num {
+  background: color-mix(in srgb, var(--ui-surface) 82%, transparent);
+  color: var(--ui-ink-2); text-decoration: line-through;
+}
+
+/* ---------- Collapse: keep the canvas centred ----------
+   The canvas is pinned to both shell edges, so when one collapses the slide
+   drifts off centre. Reserving the handle's width on both sides keeps the
+   left and right margins equal whichever panel is hidden. */
+body.deck-edit-mode { --shell-gutter: 15px; }
+body.deck-edit-mode .slides-offset {
+  left: calc(var(--shell-left) + var(--shell-gutter));
+  right: calc(var(--shell-right) + var(--shell-gutter));
+}
+body.deck-edit-mode .slides-offset > section.slide {
+  width: calc(100vw - var(--shell-left) - var(--shell-right) - var(--shell-gutter) * 2 - 56px);
+  height: calc((100vw - var(--shell-left) - var(--shell-right) - var(--shell-gutter) * 2 - 56px) * 0.5625);
+}
+
+/* Collapsing set the width to zero but left the padding, so the panel kept a
+   24px sliver. Nothing about a hidden panel should occupy space. */
+body.deck-edit-mode .slide-sidebar,
+body.deck-edit-mode .deck-inspector { box-sizing: border-box; }
+body.deck-hide-right .deck-inspector,
+body.deck-hide-left .slide-sidebar {
+  width: 0; padding: 0; border: 0; overflow: hidden;
+}
+
+/* The canvas scrolls, and a scrollbar only takes room on one side — so the
+   slide centred inside a box that was narrower on the right than the left.
+   Reserving the gutter on both edges keeps the margins equal. */
+body.deck-edit-mode .slides-offset { scrollbar-gutter: stable both-edges; }

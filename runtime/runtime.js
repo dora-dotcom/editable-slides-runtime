@@ -2424,7 +2424,21 @@
         : 'Slide ' + (at + 1) + ' of ' + shown.length;
     }
     const sk = document.querySelector('[data-slide-skip]');
-    if (sk && slide) sk.checked = slide.hasAttribute('data-skip');
+    if (sk && slide && document.activeElement !== sk) sk.checked = slide.hasAttribute('data-skip');
+
+    const layer = slide ? slide.querySelector(':scope > .slide-bg-container') : null;
+    const hasImage = !!(layer && layer.style.backgroundImage && layer.style.backgroundImage !== 'none');
+    const imgRow = document.getElementById('bgImageRow');
+    if (imgRow) imgRow.hidden = !hasImage;
+    if (hasImage) {
+      const op = document.querySelector('[data-bg-opacity]');
+      const v = Math.round((parseFloat(layer.style.opacity || '1')) * 100);
+      if (op && document.activeElement !== op) op.value = v;
+      const out = document.querySelector('[data-bg-opacity-out]');
+      if (out) out.textContent = v;
+      const sz = document.querySelector('[data-bg-size]');
+      if (sz && document.activeElement !== sz) sz.value = layer.style.backgroundSize || 'cover';
+    }
     const bg = document.querySelector('[data-slide-bg]');
     if (bg && slide && document.activeElement !== bg) {
       const rgb = getComputedStyle(slide).backgroundColor.match(/\d+/g);
@@ -2509,7 +2523,78 @@
     const c = e.target.closest && e.target.closest('[data-slide-bg]');
     if (!c) return;
     const slide = currentSlide();
-    if (slide) slide.style.background = c.value;
+    if (slide) slide.style.backgroundColor = c.value;
+  });
+
+  /* --- background image ---------------------------------------------------
+   * The image goes on its own layer, not on the slide: opacity applied to the
+   * slide would fade the words with it. Templates that ship a
+   * .slide-bg-container already work this way; one is created when a deck has
+   * none, behind everything and never selectable. */
+  function bgLayer(slide, make) {
+    let el = slide.querySelector(':scope > .slide-bg-container');
+    if (!el && make) {
+      el = document.createElement('div');
+      el.className = 'slide-bg-container';
+      el.style.cssText = 'position:absolute;inset:0;background-size:cover;background-position:center;' +
+        'background-repeat:no-repeat;pointer-events:none;z-index:0;';
+      slide.insertBefore(el, slide.firstChild);
+    }
+    return el;
+  }
+
+  (function () {
+    const inp = document.getElementById('deckBgInput');
+    if (!inp) return;
+    document.querySelectorAll('[data-slide-bg-image]').forEach(function (b) {
+      b.addEventListener('click', function () { if (editor.active) inp.click(); });
+    });
+    inp.addEventListener('change', function (e) {
+      const file = e.target.files[0];
+      inp.value = '';
+      if (!file) return;
+      const slide = currentSlide();
+      if (!slide) return;
+      const reader = new FileReader();
+      reader.onload = function (ev) {
+        const layer = bgLayer(slide, true);
+        const before = layer.style.backgroundImage;
+        const after = 'url("' + ev.target.result + '")';
+        const apply = function (v) { layer.style.backgroundImage = v; syncInspector(); };
+        apply(after);
+        history.push({ undo: function () { apply(before); }, redo: function () { apply(after); } });
+        updateUndoRedoChrome();
+      };
+      reader.readAsDataURL(file);
+    });
+  })();
+
+  document.addEventListener('input', function (e) {
+    const f = e.target.closest && e.target.closest('[data-bg-opacity]');
+    if (!f) return;
+    const slide = currentSlide();
+    const layer = slide && bgLayer(slide, false);
+    if (layer) layer.style.opacity = String((parseFloat(f.value) || 0) / 100);
+    const out = document.querySelector('[data-bg-opacity-out]');
+    if (out) out.textContent = f.value;
+  });
+  document.addEventListener('change', function (e) {
+    const sel = e.target.closest && e.target.closest('[data-bg-size]');
+    if (!sel) return;
+    const slide = currentSlide();
+    const layer = slide && bgLayer(slide, false);
+    if (layer) layer.style.backgroundSize = sel.value;
+  });
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest || !e.target.closest('[data-bg-image-clear]')) return;
+    const slide = currentSlide();
+    const layer = slide && bgLayer(slide, false);
+    if (!layer) return;
+    const before = layer.style.backgroundImage;
+    const apply = function (v) { layer.style.backgroundImage = v; syncInspector(); };
+    apply('');
+    history.push({ undo: function () { apply(before); }, redo: function () { apply(''); } });
+    updateUndoRedoChrome();
   });
   document.addEventListener('click', function (e) {
     if (!e.target.closest || !e.target.closest('[data-slide-bg-reset]')) return;
@@ -2665,7 +2750,11 @@
     if (sel) sel.value = (obj && obj.getAttribute('data-fx-enter')) || '';
     if (btn) btn.classList.toggle('active', !!(obj && obj.hasAttribute('data-fx-countup')));
   }
-  document.addEventListener('click', function () {
+  document.addEventListener('click', function (e) {
+    // Not for clicks inside the inspector: a checkbox updates on click and
+    // only reports on change, so re-reading the document in between would put
+    // the control back where it was and swallow the click.
+    if (e.target.closest && e.target.closest('.deck-inspector')) return;
     syncMotionControls();
     if (editor.active) editor._updateRteToolbar();
   }, true);

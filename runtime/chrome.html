@@ -219,7 +219,29 @@
     <h4 class="deck-sect-head" data-fold><span class="deck-sect-caret"></span>Slide</h4>
     <div class="deck-sect-body">
       <div class="deck-field"><span class="deck-field-label">Background</span>
-        <div class="deck-field-row"><input type="color" data-slide-bg><button type="button" data-slide-bg-reset>Reset</button></div>
+        <div class="deck-field-row">
+          <input type="color" data-slide-bg>
+          <button type="button" data-slide-bg-image>Image…</button>
+          <button type="button" data-slide-bg-reset>Reset</button>
+        </div>
+      </div>
+      <div id="bgImageRow" hidden>
+        <div class="deck-field"><span class="deck-field-label">Image size</span>
+          <div class="deck-field-row">
+            <select data-bg-size aria-label="Background image size">
+              <option value="cover">Cover</option>
+              <option value="contain">Contain</option>
+              <option value="100% 100%">Stretch</option>
+              <option value="auto">Original</option>
+            </select>
+            <button type="button" data-bg-image-clear title="Remove the image">Clear</button>
+          </div>
+        </div>
+        <div class="deck-field"><span class="deck-field-label">Image opacity</span>
+          <div class="deck-field-row">
+            <input type="range" data-bg-opacity min="0" max="100" step="1"><output data-bg-opacity-out>100</output>
+          </div>
+        </div>
       </div>
       <div class="deck-field">
         <label class="deck-check"><input type="checkbox" data-slide-skip> Skip when presenting</label>
