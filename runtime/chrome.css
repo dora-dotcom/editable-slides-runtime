@@ -795,3 +795,28 @@ body.deck-edit-mode .deck-left-hover-anchor .deck-menu-list > button:hover {
 body.deck-edit-mode .deck-left-hover-anchor .deck-menu-shapes button {
   height: 30px; padding: 0; border: 1px solid var(--ui-line);
 }
+
+/* ---------- Top bar, laid out the way a deck editor lays one out ----------
+   Two clusters pinned to opposite edges left a thousand pixels of nothing in
+   the middle. Slides and Bento both do the same thing instead: the document's
+   name on the left, the tools immediately after it, and only the actions that
+   end the session on the right. */
+body.deck-edit-mode .deck-left-hover-anchor { justify-content: flex-start; }
+body.deck-edit-mode .deck-bar-lead { flex: 0 1 auto; min-width: 0; margin-right: 4px; }
+body.deck-edit-mode .deck-left-row--tools { margin-left: 0; }
+body.deck-edit-mode .deck-bar-trail { margin-left: auto; gap: var(--ui-gap); }
+
+.deck-title {
+  font-family: var(--ui-font); font-size: 14px; font-weight: 600; color: var(--ui-ink);
+  padding: 5px 9px; border-radius: var(--ui-r); max-width: 26vw;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border: 1px solid transparent; cursor: text; outline: none;
+}
+.deck-title:hover { border-color: var(--ui-line); }
+.deck-title:focus { border-color: var(--deck-chrome-accent, var(--ui-ink)); overflow: visible; }
+body:not(.deck-edit-mode) .deck-title { display: none; }
+
+.deck-bar-sep {
+  width: 1px; height: 20px; margin: 0 4px; background: var(--ui-line); flex: 0 0 auto;
+}
+body:not(.deck-edit-mode) .deck-bar-sep { display: none; }

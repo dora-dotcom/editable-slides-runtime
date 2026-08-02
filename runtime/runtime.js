@@ -1008,10 +1008,13 @@
     root.querySelectorAll('.slide-object.is-selected').forEach((el) => {
       el.classList.remove('is-selected');
     });
+    // Everything editable, not just slide text: the deck title lives in the
+    // chrome and is contenteditable too, and anything added later will be
+    // caught by the same rule rather than needing to be remembered.
+    root.querySelectorAll('[contenteditable="true"]').forEach((el) => {
+      el.setAttribute('contenteditable', 'false');
+    });
     root.querySelectorAll('.slide-object-text').forEach((el) => {
-      if (el.getAttribute('contenteditable') === 'true') {
-        el.setAttribute('contenteditable', 'false');
-      }
       delete el.dataset._deckHtmlBefore;
       el.removeAttribute('data-_deck-html-before');
     });
@@ -2160,6 +2163,24 @@
         if (obj) obj.setAttribute('data-media', kind);
       };
       reader.readAsDataURL(file);
+    });
+  })();
+
+  /* === Deck title === */
+
+  // The bar needs the document's name on it — that is what fills the left in
+  // every editor of this shape, and it was the missing piece that left a gap.
+  (function () {
+    const el = document.getElementById('deckTitle');
+    if (!el) return;
+    const initial = (document.title || '').trim();
+    if (initial) el.textContent = initial;
+    el.addEventListener('input', function () {
+      document.title = el.textContent.trim() || 'Untitled deck';
+      refreshFields();
+    });
+    el.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
     });
   })();
 

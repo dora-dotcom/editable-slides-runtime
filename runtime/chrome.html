@@ -2,11 +2,12 @@
      Lines 435-483. Drop-in: paste right after <body>, before <div class="slides-offset">. -->
 
 <div class="deck-left-hover-anchor" id="deckLeftHover" aria-label="Deck controls">
-  <div class="deck-left-row">
+  <div class="deck-left-row deck-bar-lead">
+    <span class="deck-title" id="deckTitle" contenteditable="true" spellcheck="false"
+          role="textbox" aria-label="Deck title">Untitled deck</span>
     <button type="button" class="edit-toggle" id="editToggle" title="Edit mode (E) — hover this corner to show">Edit</button>
-    <button type="button" class="sidebar-pages-toggle" id="pagesToggle" title="Pages sidebar">Pages</button>
-    <button type="button" class="deck-btn-save" id="btnSave" title="Save layout to browser (Ctrl+S)">Save</button>
   </div>
+
   <div class="deck-edit-chrome deck-left-row deck-left-row--tools" id="deckEditChrome" data-deck-chrome-surface="" role="toolbar" aria-label="Editing">
     <button type="button" id="btnUndo" aria-label="Undo" title="Undo (Ctrl+Z)">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14l-4-4 4-4M5 10h8a5 5 0 010 10h-2"/></svg>
@@ -14,6 +15,7 @@
     <button type="button" id="btnRedo" aria-label="Redo" title="Redo (Ctrl+Y / Ctrl+Shift+Z)">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 14l4-4-4-4M19 10h-8a5 5 0 000 10h2"/></svg>
     </button>
+    <span class="deck-bar-sep" aria-hidden="true"></span>
     <div class="deck-menu" data-menu="insert">
       <button type="button" class="deck-menu-btn" data-menu-toggle aria-haspopup="true" aria-expanded="false">Insert</button>
       <div class="deck-menu-list" role="menu">
@@ -39,6 +41,12 @@
         </div>
       </div>
     </div>
+    <span class="deck-bar-sep" aria-hidden="true"></span>
+    <button type="button" class="sidebar-pages-toggle" id="pagesToggle" title="Pages sidebar">Pages</button>
+    <button type="button" class="deck-btn-save" id="btnSave" title="Save layout to browser (Ctrl+S)">Save</button>
+  </div>
+
+  <div class="deck-left-row deck-bar-trail">
     <button type="button" class="deck-btn-present" data-present="start" title="Present (P)">Present</button>
     <button type="button" class="deck-btn-done" id="btnDoneEdit">Done</button>
   </div>
