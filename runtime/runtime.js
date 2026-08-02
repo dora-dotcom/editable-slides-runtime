@@ -1980,10 +1980,17 @@
     document.body.classList.toggle('deck-presenting', presenting);
     if (presenting) {
       if (editor.active) editor.setActive(false);
+      const focused = document.activeElement;
+      if (focused && focused.blur) focused.blur();
       deck.goTo(deck.current);
     }
     paintPresentBar();
     paintSpeaker();
+    if (presenting) wakePresentControls();
+    else {
+      clearTimeout(presentIdle);
+      document.body.classList.remove('deck-present-awake');
+    }
   }
 
   /* === Speaker window === */
@@ -2056,6 +2063,18 @@
     paintSpeaker();
   }
 
+  let presentIdle = 0;
+  function wakePresentControls() {
+    if (!presenting) return;
+    document.body.classList.add('deck-present-awake');
+    clearTimeout(presentIdle);
+    presentIdle = setTimeout(function () {
+      document.body.classList.remove('deck-present-awake');
+    }, 2600);
+  }
+  document.addEventListener('mousemove', wakePresentControls);
+  document.addEventListener('keydown', wakePresentControls);
+
   function paintPresentBar() {
     const el = document.getElementById('deckPresentCount');
     if (el) el.textContent = (deck.current + 1) + ' / ' + ((deck.slides || []).length || 1);
@@ -2090,8 +2109,10 @@
 
   document.addEventListener('keydown', function (e) {
     if (!CHROME_ENABLED) return;
-    if (e.target.closest && e.target.closest('[contenteditable="true"]')) return;
+    // Escape is checked before the typing guard: a way out must never depend
+    // on where the focus happens to be.
     if (e.key === 'Escape' && presenting) { setPresenting(false); return; }
+    if (e.target.closest && e.target.closest('[contenteditable="true"]')) return;
     if ((e.key === 'p' || e.key === 'P') && !editor.active) { setPresenting(!presenting); return; }
     if ((e.key === 's' || e.key === 'S') && presenting) openSpeaker();
   });

@@ -581,3 +581,217 @@ body.deck-edit-mode .slide-sidebar { z-index: 9000; }
 body.deck-edit-mode .deck-left-hover-anchor,
 body.deck-edit-mode .deck-left-row,
 body.deck-edit-mode .deck-edit-chrome { overflow: visible; }
+
+/* ============================================================
+   CHROME DESIGN SYSTEM
+   ============================================================
+   The editor is a tool, not part of the document. It was inheriting the
+   deck's fonts and sizes, which is why it looked like a deck wearing a
+   toolbar: Manrope buttons next to Manrope headings, sizes drifting with
+   whatever clamp() the deck happened to set. Google Slides does not render
+   its menus in your body font, and neither should this.
+
+   So the chrome gets its own type stack, one scale, one spacing grid, and a
+   neutral palette. The deck's accent is borrowed for exactly one thing —
+   what is currently active. */
+
+:root, body {
+  --ui-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ui-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  --ui-text: 13px;
+  --ui-label: 10.5px;
+  --ui-h: 30px;
+  --ui-r: 6px;
+  --ui-gap: 6px;
+  --ui-pad: 12px;
+  --ui-ink: #1b1c1f;
+  --ui-ink-2: #62656c;
+  --ui-line: #e3e4e7;
+  --ui-surface: #ffffff;
+  --ui-canvas: #eceded;
+  --ui-hover: rgba(15, 17, 20, 0.055);
+}
+
+.deck-left-hover-anchor, .slide-sidebar, .deck-inspector,
+.rte-toolbar, .deck-present-bar, .deck-menu-list {
+  font-family: var(--ui-font);
+  font-size: var(--ui-text);
+  color: var(--ui-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* --- one button, everywhere --- */
+body.deck-edit-mode .deck-left-hover-anchor button,
+.deck-inspector button, .deck-inspector select,
+.rte-toolbar button, .deck-present-bar button, .deck-menu-list button {
+  font-family: var(--ui-font);
+  font-size: var(--ui-text);
+  line-height: 1;
+  border-radius: var(--ui-r);
+  border: 1px solid var(--ui-line);
+  background: var(--ui-surface);
+  color: var(--ui-ink);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+body.deck-edit-mode .deck-left-hover-anchor button:hover,
+.deck-inspector button:hover, .rte-toolbar button:hover,
+.deck-present-bar button:hover, .deck-menu-list button:hover {
+  background: var(--ui-hover);
+}
+body.deck-edit-mode .deck-edit-chrome button,
+body.deck-edit-mode .deck-left-row button { height: var(--ui-h); }
+body.deck-edit-mode .deck-edit-chrome svg { width: 16px; height: 16px; }
+
+/* Primary action: the deck's accent, used once. */
+body.deck-edit-mode .deck-btn-done {
+  background: var(--deck-chrome-accent, #1b1c1f);
+  border-color: transparent;
+  color: #fff; font-weight: 600; padding: 0 16px;
+}
+body.deck-edit-mode .deck-btn-done:hover { filter: brightness(1.08); background: var(--deck-chrome-accent, #1b1c1f); }
+
+/* --- top bar --- */
+body.deck-edit-mode {
+  --shell-top: 56px;
+  --shell-left: 208px;
+  --shell-right: 264px;
+}
+body.deck-edit-mode .deck-left-hover-anchor {
+  height: var(--shell-top); padding: 0 var(--ui-pad); gap: var(--ui-gap);
+  background: var(--ui-surface); border-bottom: 1px solid var(--ui-line);
+  box-shadow: none;
+}
+body.deck-edit-mode .deck-left-row { gap: var(--ui-gap); }
+
+/* --- filmstrip --- */
+body.deck-edit-mode .slide-sidebar {
+  background: var(--ui-surface); border-right: 1px solid var(--ui-line);
+  padding: var(--ui-pad) 10px; gap: 10px;
+}
+body.deck-edit-mode .slide-sidebar h3 {
+  font-family: var(--ui-mono); font-size: var(--ui-label); letter-spacing: 0.11em;
+  text-transform: uppercase; color: var(--ui-ink-2); margin: 0 2px 2px;
+}
+body.deck-edit-mode .filmstrip-item {
+  border: 1px solid var(--ui-line); border-radius: 7px; padding: 5px; background: var(--ui-surface);
+}
+body.deck-edit-mode .filmstrip-item.is-current,
+body.deck-edit-mode .filmstrip-item.active {
+  border-color: var(--deck-chrome-accent, var(--ui-ink));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--deck-chrome-accent, #1b1c1f) 22%, transparent);
+}
+body.deck-edit-mode .filmstrip-num {
+  font-family: var(--ui-mono); font-size: var(--ui-label); color: var(--ui-ink-2);
+}
+body.deck-edit-mode .filmstrip-actions button {
+  height: var(--ui-h); font-size: var(--ui-text);
+}
+
+/* --- canvas --- */
+body.deck-edit-mode .slides-offset {
+  background: var(--ui-canvas);
+}
+body.deck-edit-mode .slides-offset > section.slide {
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 8px 28px rgba(0,0,0,0.10);
+  border-radius: 4px; margin: 32px auto;
+}
+
+/* --- inspector --- */
+.deck-inspector {
+  background: var(--ui-surface); border-left: 1px solid var(--ui-line);
+  padding: var(--ui-pad); gap: 20px;
+}
+.deck-inspector h4 {
+  font-family: var(--ui-mono); font-size: var(--ui-label); letter-spacing: 0.11em;
+  text-transform: uppercase; color: var(--ui-ink-2); margin: 0 0 8px;
+}
+.deck-inspector .slide-notes {
+  font-family: var(--ui-font); font-size: var(--ui-text); line-height: 1.5;
+  border: 1px solid var(--ui-line); border-radius: var(--ui-r); padding: 9px 10px;
+  background: var(--ui-surface); color: var(--ui-ink); min-height: 132px;
+}
+.deck-inspector .slide-notes:focus {
+  outline: none; border-color: var(--deck-chrome-accent, var(--ui-ink));
+}
+.deck-inspector-empty { font-size: 12px; line-height: 1.5; color: var(--ui-ink-2); margin: 0; }
+.deck-field-label {
+  font-family: var(--ui-mono); font-size: var(--ui-label); letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--ui-ink-2);
+}
+.deck-inspector-fields button, .deck-inspector-fields select {
+  height: 28px; padding: 0 10px; font-size: 12px;
+}
+.deck-inspector-fields [data-role-set].active,
+.deck-inspector-fields [data-fx-countup-toggle].active {
+  background: var(--deck-chrome-accent, var(--ui-ink)); border-color: transparent; color: #fff;
+}
+
+/* --- insert menu --- */
+.deck-menu-btn { height: var(--ui-h); padding: 0 12px; }
+.deck-menu-list {
+  min-width: 186px; padding: 6px; border-radius: 10px;
+  border: 1px solid var(--ui-line); background: var(--ui-surface);
+  box-shadow: 0 10px 34px rgba(0,0,0,0.14);
+}
+.deck-menu-list > button {
+  height: 32px; border: 0; background: transparent; justify-content: flex-start;
+}
+.deck-menu-sep { background: var(--ui-line); }
+
+/* --- floating text toolbar --- */
+.rte-toolbar {
+  border-radius: 9px; padding: 5px 7px; gap: 5px;
+  border: 1px solid var(--ui-line); background: var(--ui-surface);
+  box-shadow: 0 8px 26px rgba(0,0,0,0.16);
+}
+.rte-toolbar button { height: 26px; padding: 0 8px; font-size: 12px; }
+.rte-toolbar-meta {
+  font-family: var(--ui-mono); font-size: var(--ui-label); letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--ui-ink-2);
+}
+
+/* --- present controls: findable, then out of the way --- */
+.deck-present-bar {
+  bottom: 26px; gap: 4px; padding: 6px 8px; border-radius: 12px;
+  background: rgba(22, 23, 26, 0.92); color: #f4f5f6; border: 0;
+  box-shadow: 0 10px 34px rgba(0,0,0,0.34);
+  opacity: 0; transform: translateX(-50%) translateY(8px);
+  transition: opacity 0.22s ease, transform 0.22s ease;
+  pointer-events: none;
+}
+body.deck-presenting.deck-present-awake .deck-present-bar,
+.deck-present-bar:hover { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+.deck-present-bar button {
+  height: 28px; padding: 0 10px; font-size: 12px; color: inherit;
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14);
+}
+.deck-present-bar button:hover { background: rgba(255,255,255,0.18); }
+.deck-present-count {
+  font-family: var(--ui-mono); font-size: 12px; padding: 0 8px; opacity: 0.85;
+}
+.deck-present-exit kbd {
+  font-family: var(--ui-mono); font-size: 10px; padding: 1px 5px; border-radius: 4px;
+  background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.14);
+}
+
+/* The generic button rule above is two classes and two elements deep, so the
+   specific ones have to match that reach or they lose regardless of order —
+   which is why the primary button and the menu items were coming out plain. */
+body.deck-edit-mode .deck-left-hover-anchor button.deck-btn-done {
+  background: var(--deck-chrome-accent, #1b1c1f);
+  border-color: transparent; color: #fff; font-weight: 600; padding: 0 16px;
+}
+body.deck-edit-mode .deck-left-hover-anchor button.deck-btn-done:hover {
+  background: var(--deck-chrome-accent, #1b1c1f); filter: brightness(1.08);
+}
+body.deck-edit-mode .deck-left-hover-anchor .deck-menu-list > button {
+  border: 0; background: transparent; height: 32px; justify-content: flex-start;
+  padding: 0 10px; width: 100%;
+}
+body.deck-edit-mode .deck-left-hover-anchor .deck-menu-list > button:hover {
+  background: var(--ui-hover);
+}
+body.deck-edit-mode .deck-left-hover-anchor .deck-menu-shapes button {
+  height: 30px; padding: 0; border: 1px solid var(--ui-line);
+}
