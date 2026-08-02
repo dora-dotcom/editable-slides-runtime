@@ -820,3 +820,52 @@ body:not(.deck-edit-mode) .deck-title { display: none; }
   width: 1px; height: 20px; margin: 0 4px; background: var(--ui-line); flex: 0 0 auto;
 }
 body:not(.deck-edit-mode) .deck-bar-sep { display: none; }
+
+/* ---------- Insert tools, laid out flat ----------
+   They were collapsed into a menu when the bar was overflowing. The bar has a
+   layout now, so they go back to one click instead of two — the way Bento
+   puts Text / Shape / Image / Media / Table / Chart straight on the bar. */
+body.deck-edit-mode .deck-left-hover-anchor button.deck-tool {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: var(--ui-h); width: auto; padding: 0 10px;
+  border: 1px solid transparent; background: transparent; white-space: nowrap;
+}
+body.deck-edit-mode .deck-left-hover-anchor button.deck-tool:hover {
+  background: var(--ui-hover); border-color: var(--ui-line);
+}
+body.deck-edit-mode .deck-tool svg {
+  width: 16px; height: 16px; flex: 0 0 auto;
+  fill: none; stroke: currentColor; stroke-width: 1.7;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+body.deck-edit-mode .deck-tool span { font-size: 12.5px; }
+.deck-menu[data-menu="shape"] .deck-menu-btn::after { content: none; }
+
+/* Shape picker: a small grid rather than a list. */
+.deck-menu-list--grid {
+  display: none; grid-template-columns: repeat(4, 34px); gap: 4px;
+  min-width: 0; padding: 6px;
+}
+.deck-menu.open .deck-menu-list--grid { display: grid; }
+body.deck-edit-mode .deck-left-hover-anchor .deck-menu-list--grid > button {
+  width: 34px; height: 34px; padding: 0; justify-content: center;
+  border: 1px solid var(--ui-line); background: var(--ui-surface);
+}
+
+/* Narrow windows: labels drop, icons stay. */
+@media (max-width: 1180px) {
+  body.deck-edit-mode .deck-tool span { display: none; }
+  body.deck-edit-mode .deck-left-hover-anchor button.deck-tool { padding: 0 8px; }
+}
+
+/* ---------- Filmstrip actions ---------- */
+body.deck-edit-mode .filmstrip-item .filmstrip-actions {
+  display: flex; align-items: center; gap: 4px; margin-top: 5px;
+}
+body.deck-edit-mode .filmstrip-item .filmstrip-actions button {
+  height: 22px; padding: 0 7px; font-size: 11px;
+  border: 1px solid var(--ui-line); background: var(--ui-surface); color: var(--ui-ink-2);
+}
+body.deck-edit-mode .filmstrip-item .filmstrip-actions button:hover { color: var(--ui-ink); }
+body.deck-edit-mode .filmstrip-item .filmstrip-num { margin-right: auto; }
+body.deck-edit-mode .slide-sidebar > .filmstrip-actions button { font-weight: 500; }

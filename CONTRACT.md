@@ -32,7 +32,7 @@ with **zero** CSS custom properties passes the whole test suite unchanged.
 
         <div class="slide-object"
              data-slide-object
-             data-oid="s0-title"       <!-- unique in the document, stable -->
+             data-oid="s0-title"       <!-- unique within its slide, stable -->
              data-object-type="text"
              style="left:6%;top:20%;width:70%;height:14%;">
           <div class="slide-object-text" contenteditable="true">Your headline</div>
@@ -54,7 +54,9 @@ Four rules, and they are the whole contract:
    nested in a wrapper — the runtime queries `:scope > section.slide`. Anything
    deeper is invisible to it.
 2. **Every editable thing is a `.slide-object`** carrying `data-slide-object`,
-   a document-unique `data-oid`, and a `data-object-type`.
+   a `data-oid` unique *within its slide*, and a `data-object-type`. Reusing an
+   oid on another slide is not a clash — it is how a morph is declared, so
+   duplicating a slide deliberately keeps them.
 3. **Geometry is percentages** in the inline `style`: `left`, `top`, `width`,
    and usually `height`. Percentages are what let a slide scale to any viewport
    and still land in the same place.

@@ -804,6 +804,14 @@
         const num = document.createElement('span');
         num.className = 'filmstrip-num';
         num.textContent = 'Slide ' + (idx + 1);
+        const dup = document.createElement('button');
+        dup.type = 'button';
+        dup.textContent = 'Duplicate';
+        dup.title = 'Duplicate this slide';
+        dup.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          this._addSlide(idx, true);
+        });
         const del = document.createElement('button');
         del.type = 'button';
         del.textContent = 'Delete';
@@ -812,6 +820,7 @@
           this._deleteSlide(idx);
         });
         actions.appendChild(num);
+        actions.appendChild(dup);
         actions.appendChild(del);
 
         item.appendChild(lineTop);
@@ -955,6 +964,52 @@
       const frag = document.createDocumentFragment();
       ids.forEach((id) => { if (map[id]) frag.appendChild(map[id]); });
       parent.appendChild(frag);
+    }
+
+    /** Insert a slide after `index`. Duplicating keeps the oids on purpose:
+     *  an object that appears on two slides under the same oid morphs between
+     *  them, so "duplicate, then move things" is how a transition gets made. */
+    _addSlide(index, duplicate) {
+      this.deck.refreshSlides();
+      const slides = this.deck.slides;
+      const source = slides[index] || slides[0];
+      if (!source) return;
+      const parent = source.parentNode;
+
+      let node;
+      if (duplicate) {
+        node = source.cloneNode(true);
+        node.classList.remove('visible');
+      } else {
+        node = document.createElement('section');
+        node.className = 'slide';
+        const layer = document.createElement('div');
+        layer.className = 'slide-edit-layer';
+        node.appendChild(layer);
+        const bg = source.querySelector('.slide-bg-container');
+        if (bg) node.insertBefore(bg.cloneNode(false), layer);
+      }
+      node.id = 'slide-' + Date.now().toString(36);
+      node.removeAttribute('data-notes');
+
+      parent.insertBefore(node, source.nextElementSibling);
+      const settle = () => {
+        this.deck.refreshSlides();
+        ensureResizeHandles(document);
+        ensureObjectControls(document);
+        repaintCharts(document);
+        refreshFields();
+        this.deck._updateChrome();
+        this.refresh();
+      };
+      settle();
+      this.deck.goTo(index + 1);
+
+      this.history.push({
+        undo: () => { if (node.parentNode) node.parentNode.removeChild(node); settle(); },
+        redo: () => { parent.insertBefore(node, source.nextElementSibling); settle(); }
+      });
+      updateUndoRedoChrome();
     }
 
     _deleteSlide(index) {
@@ -2164,6 +2219,17 @@
       };
       reader.readAsDataURL(file);
     });
+  })();
+
+  /* === Slide actions === */
+
+  (function () {
+    const add = document.getElementById('btnNewSlide');
+    const dup = document.getElementById('btnDuplicateSlide');
+    // Slide operations belong to the sidebar, which owns the filmstrip — the
+    // editor owns objects within a slide.
+    if (add) add.addEventListener('click', function () { sidebar._addSlide(deck.current, false); });
+    if (dup) dup.addEventListener('click', function () { sidebar._addSlide(deck.current, true); });
   })();
 
   /* === Deck title === */
