@@ -295,3 +295,29 @@ body.deck-edit-mode .slide-bg-replace-anchor { display: block; }
   border: 1px dashed var(--deck-chrome-border, rgba(0,0,0,0.25));
   white-space: nowrap; overflow-x: auto;
 }
+
+/* ---------- Speaker notes panel ---------- */
+.slide-notes-block { display: flex; flex-direction: column; gap: 4px; margin: 8px 4px 0; }
+.slide-notes-label {
+  font-size: clamp(0.6rem, 1.1vw, 0.72rem); text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--deck-chrome-muted, inherit);
+}
+.slide-notes {
+  width: 100%; box-sizing: border-box; resize: vertical; min-height: 60px;
+  padding: 6px 8px; border-radius: 6px; line-height: 1.45;
+  border: 1px solid var(--deck-chrome-border, rgba(0,0,0,0.15));
+  background: var(--deck-chrome-surface, #fff); color: var(--deck-chrome-text, inherit);
+  font-family: var(--font-body, inherit); font-size: 12px;
+}
+
+/* ---------- Role buttons ---------- */
+.rte-toolbar [data-role-set].active {
+  background: var(--deck-chrome-accent, rgba(0,0,0,0.12));
+  color: var(--deck-chrome-surface, #fff);
+}
+
+/* A field keeps its token in the document; the text is the resolved value. */
+.slide-object-text [data-field] { white-space: nowrap; }
+body.deck-edit-mode .slide-object-text [data-field] {
+  outline: 1px dashed var(--deck-chrome-border, rgba(0,0,0,0.3)); outline-offset: 1px;
+}

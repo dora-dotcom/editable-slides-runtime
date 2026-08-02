@@ -213,6 +213,7 @@
         ensureResizeHandles(document);
         ensureObjectControls(document);
         repaintCharts(document);
+      refreshFields();
       } else {
         this.clearSelection();
         this.toolbar.classList.remove('visible');
@@ -958,6 +959,7 @@
           ensureResizeHandles(document);
           ensureObjectControls(document);
           repaintCharts(document);
+      refreshFields();
           this.deck._updateChrome();
           this.refresh();
         },
@@ -1050,6 +1052,7 @@
       ensureResizeHandles(document);
       ensureObjectControls(document);
       repaintCharts(document);
+      refreshFields();
       deck.refreshSlides();
       deck._syncCurrentFromScroll();
       deck._updateChrome();
@@ -1151,6 +1154,7 @@
   ensureResizeHandles(document);
   ensureObjectControls(document);
   repaintCharts(document);
+      refreshFields();
   editor.bind();
   updateUndoRedoChrome();
 
@@ -1328,6 +1332,7 @@
           ensureResizeHandles(document);
           ensureObjectControls(document);
           repaintCharts(document);
+      refreshFields();
         },
         redo: () => {
           snapshots.forEach((s) => {
@@ -1679,6 +1684,143 @@
     (root || document).querySelectorAll('[data-object-type="chart"]').forEach(paintChart);
   }
 
+  /* === Dynamic fields === */
+
+  // A field keeps its token in the attribute and its resolved value as text, so
+  // the document stores {{page}} rather than "3" and the number follows the
+  // slide when pages are reordered.
+  function resolveField(token, slideIndex, slideCount) {
+    const now = new Date();
+    switch (token) {
+      case 'page': return String(slideIndex + 1);
+      case 'pages': return String(slideCount);
+      case 'title': return document.title || '';
+      case 'date': return now.toLocaleDateString();
+      case 'time': return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      default: return '';
+    }
+  }
+
+  function refreshFields() {
+    const slides = deck.slides || [];
+    slides.forEach(function (slide, i) {
+      slide.querySelectorAll('[data-field]').forEach(function (el) {
+        el.textContent = resolveField(el.getAttribute('data-field'), i, slides.length);
+      });
+    });
+  }
+
+  function insertField(token) {
+    const sel = window.getSelection();
+    const span = document.createElement('span');
+    span.setAttribute('data-field', token);
+    span.textContent = resolveField(token, deck.current, (deck.slides || []).length);
+
+    const textEl = sel && sel.anchorNode && sel.anchorNode.parentElement &&
+      sel.anchorNode.parentElement.closest('.slide-object-text[contenteditable="true"]');
+    if (textEl && sel.rangeCount) {
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(span);
+      range.setStartAfter(span);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      return span;
+    }
+    // No text cursor: drop it in as its own small text object instead.
+    insertObject('text',
+      '<div class="slide-object-text" contenteditable="true" ' +
+      'style="width:100%;height:100%;font-family:var(--font-body);' +
+      'color:var(--text-primary, currentColor);">' + span.outerHTML + '</div>',
+      { left: 82, top: 90, width: 12, height: 6 });
+    return null;
+  }
+
+  /* === Roles === */
+
+  // A role says what a text object IS, so a layout can be applied later by
+  // matching donor to target on role rather than on hand-kept ids.
+  const ROLES = ['title', 'subtitle', 'body', 'kicker'];
+
+  function applyRole(role) {
+    const obj = document.querySelector('.slide-object.is-selected');
+    if (!obj) return;
+    const before = obj.getAttribute('data-role');
+    const after = before === role ? null : role;
+    if (after) obj.setAttribute('data-role', after); else obj.removeAttribute('data-role');
+    syncRoleButtons();
+    history.push({
+      undo: function () { if (before) obj.setAttribute('data-role', before); else obj.removeAttribute('data-role'); syncRoleButtons(); },
+      redo: function () { if (after) obj.setAttribute('data-role', after); else obj.removeAttribute('data-role'); syncRoleButtons(); }
+    });
+    updateUndoRedoChrome();
+  }
+
+  function syncRoleButtons() {
+    const obj = document.querySelector('.slide-object.is-selected');
+    const current = obj ? obj.getAttribute('data-role') : null;
+    document.querySelectorAll('[data-role-set]').forEach(function (btn) {
+      btn.classList.toggle('active', btn.getAttribute('data-role-set') === current);
+    });
+  }
+
+  /* === Slide notes === */
+
+  // Notes live on the slide element, so they travel with the file: export it,
+  // hand it to someone, hand it to an agent — the notes are still there.
+  function notesPanel() { return document.getElementById('slideNotes'); }
+
+  function loadNotesForCurrentSlide() {
+    const panel = notesPanel();
+    const slide = deck.slides && deck.slides[deck.current];
+    if (!panel || !slide) return;
+    panel.value = slide.getAttribute('data-notes') || '';
+  }
+
+  (function () {
+    const panel = notesPanel();
+    if (!panel) return;
+    let pending = null;
+    panel.addEventListener('input', function () {
+      const slide = deck.slides && deck.slides[deck.current];
+      if (!slide) return;
+      const before = slide.getAttribute('data-notes') || '';
+      if (pending) clearTimeout(pending);
+      slide.setAttribute('data-notes', panel.value);
+      pending = setTimeout(function () {
+        const after = slide.getAttribute('data-notes') || '';
+        pending = null;
+        if (before === after) return;
+        history.push({
+          undo: function () { slide.setAttribute('data-notes', before); loadNotesForCurrentSlide(); },
+          redo: function () { slide.setAttribute('data-notes', after); loadNotesForCurrentSlide(); }
+        });
+        updateUndoRedoChrome();
+      }, 600);
+    });
+  })();
+
+  // Keep fields, notes and role buttons in step with the visible slide. The
+  // deck marks the current slide with .visible, so watching that is enough and
+  // needs no hook into the navigation code.
+  (function () {
+    const offset = document.querySelector('.slides-offset');
+    if (!offset) return;
+    let last = -1;
+    const sync = function () {
+      if (deck.current === last) return;
+      last = deck.current;
+      loadNotesForCurrentSlide();
+      syncRoleButtons();
+    };
+    new MutationObserver(sync).observe(offset, {
+      subtree: true, attributes: true, attributeFilter: ['class']
+    });
+    document.addEventListener('click', syncRoleButtons, true);
+    sync();
+  })();
+
   /* === Insert toolbar wiring === */
 
   (function () {
@@ -1697,6 +1839,20 @@
         if (kind === 'text') insertText();
         else if (kind === 'table') insertTable();
         else if (kind === 'chart') insertChart();
+      });
+    });
+    // Fields and roles sit on the text toolbar: mousedown, not click, so the
+    // text selection survives the button press.
+    document.querySelectorAll('[data-field-insert]').forEach(function (btn) {
+      btn.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+        if (editor.active) insertField(btn.getAttribute('data-field-insert'));
+      });
+    });
+    document.querySelectorAll('[data-role-set]').forEach(function (btn) {
+      btn.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+        if (editor.active) applyRole(btn.getAttribute('data-role-set'));
       });
     });
   })();

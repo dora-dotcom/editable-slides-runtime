@@ -46,6 +46,11 @@
 <aside class="slide-sidebar" id="slideSidebar" aria-label="Slide pages">
   <h3>Slides</h3>
   <div class="filmstrip-list" id="filmstripList"></div>
+  <div class="slide-notes-block">
+    <label class="slide-notes-label" for="slideNotes">Speaker notes</label>
+    <textarea id="slideNotes" class="slide-notes" rows="4"
+      placeholder="Notes for this slide — saved in the file, so they travel with it."></textarea>
+  </div>
   <div class="filmstrip-actions" style="margin-top:auto;flex-direction:column;gap:6px;">
     <button type="button" id="btnAddImage" style="width:100%;">＋ Add Image</button>
     <button type="button" id="btnExport" style="width:100%;">Export HTML</button>
@@ -64,6 +69,20 @@
   <span class="rte-toolbar-group" aria-label="Font size">
     <button type="button" data-size-step="-1" title="Smaller (1px)">A−</button>
     <button type="button" data-size-step="1" title="Larger (1px)">A+</button>
+  </span>
+  <span class="rte-toolbar-group" aria-label="Role">
+    <span class="rte-toolbar-meta">Role</span>
+    <button type="button" data-role-set="title" title="Mark as the title">Title</button>
+    <button type="button" data-role-set="subtitle" title="Mark as the subtitle">Sub</button>
+    <button type="button" data-role-set="body" title="Mark as body text">Body</button>
+    <button type="button" data-role-set="kicker" title="Mark as a kicker">Kicker</button>
+  </span>
+  <span class="rte-toolbar-group" aria-label="Insert field">
+    <span class="rte-toolbar-meta">Field</span>
+    <button type="button" data-field-insert="page" title="Page number, kept live">#</button>
+    <button type="button" data-field-insert="pages" title="Total pages, kept live">/n</button>
+    <button type="button" data-field-insert="title" title="Deck title, kept live">Title</button>
+    <button type="button" data-field-insert="date" title="Today's date">Date</button>
   </span>
 </div>
 
