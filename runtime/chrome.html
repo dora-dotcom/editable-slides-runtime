@@ -3,9 +3,10 @@
 
 <div class="deck-left-hover-anchor" id="deckLeftHover" aria-label="Deck controls">
   <div class="deck-left-row deck-bar-lead">
-    <span class="deck-title" id="deckTitle" contenteditable="true" spellcheck="false"
+    <span class="deck-title" id="deckTitle" contenteditable="false" spellcheck="false"
           role="textbox" aria-label="Deck title">Untitled deck</span>
-    <button type="button" class="edit-toggle" id="editToggle" title="Edit mode (E) — hover this corner to show">Edit</button>
+    <button type="button" class="edit-toggle" id="editToggle" title="Edit (E)">Edit</button>
+    <button type="button" class="deck-btn-view-present" data-present="start" title="Present (P)">Present</button>
   </div>
 
   <div class="deck-edit-chrome deck-left-row deck-left-row--tools" id="deckEditChrome" data-deck-chrome-surface="" role="toolbar" aria-label="Editing">
@@ -56,7 +57,7 @@
   </div>
 
   <div class="deck-left-row deck-bar-trail">
-    <div class="deck-menu deck-menu--end" data-menu="export">
+    <div class="deck-menu deck-menu--end deck-edit-only" data-menu="export">
       <button type="button" class="deck-menu-btn" data-menu-toggle aria-haspopup="true" aria-expanded="false">Export</button>
       <div class="deck-menu-list" role="menu">
         <button type="button" role="menuitem" id="btnExport">HTML file</button>

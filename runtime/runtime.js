@@ -176,6 +176,16 @@
     }
   }
 
+  /* A document's resting state is not editable. It was arriving with
+   * contenteditable="true" baked into the markup, so anyone who opened a deck
+   * just to read it could put a cursor in the text and type. Editing is a mode,
+   * and the mode turns it on. */
+  function setDeckEditable(on) {
+    document.querySelectorAll('.slides-offset .slide-object-text').forEach(function (el) {
+      el.setAttribute('contenteditable', on ? 'true' : 'false');
+    });
+  }
+
   function ensureResizeHandles(root) {
     const el = root || document;
     el.querySelectorAll('[data-slide-object]').forEach((obj) => {
@@ -255,6 +265,9 @@
       this.active = !!on;
       document.body.classList.toggle('deck-edit-mode', on);
       document.body.classList.toggle('slide-anim-paused', on);
+      setDeckEditable(on);
+      const title = document.getElementById('deckTitle');
+      if (title) title.setAttribute('contenteditable', on ? 'true' : 'false');
       if (on) {
         setTimeout(function () { if (zoomFit) fitZoom(); }, 0);
         ensureResizeHandles(document);
@@ -1292,9 +1305,29 @@
   ensureResizeHandles(document);
   ensureObjectControls(document);
   repaintCharts(document);
-      refreshFields();
+  refreshFields();
   editor.bind();
   updateUndoRedoChrome();
+
+  /* A document's resting state is not editable — decks arrive with
+   * contenteditable baked into their markup, so without this anyone opening
+   * one to read it could put a cursor in the text and type. */
+  setDeckEditable(false);
+
+  /* The file is the editor, so it opens as one. That is the call Bento makes
+   * too, and it fixes a real problem with the alternative: Edit lived behind a
+   * hover corner nobody finds. Two ways out of the default:
+   *   - a document can ask to open read-only with data-deck-mode="view" on
+   *     <html>, which is what a copy meant only for reading would set;
+   *   - a runtime that has stood down inside another viewer never starts
+   *     editing, because the host owns the document there. */
+  const OPENS_IN_VIEW =
+    document.documentElement.getAttribute('data-deck-mode') === 'view' || !CHROME_ENABLED;
+  if (!OPENS_IN_VIEW) {
+    // enterEditMode, not editor.setActive — the pages rail is part of the edit
+    // shell, and going in through the back door left it shut.
+    requestAnimationFrame(function () { enterEditMode(); });
+  }
 
   document.addEventListener('focusout', (e) => {
     const t = e.target;
@@ -1364,7 +1397,7 @@
   function showToggles() {
     clearTimeout(hideT);
     editToggle.classList.add('show');
-    document.querySelectorAll('.deck-btn-present').forEach(function (b) { b.classList.add('show'); });
+    document.querySelectorAll('.deck-btn-present, .deck-btn-view-present').forEach(function (b) { b.classList.add('show'); });
     pagesToggle.classList.add('show');
     if (document.body.classList.contains('deck-edit-mode')) {
       if (btnSave) btnSave.classList.add('show');
@@ -1374,7 +1407,7 @@
   function scheduleHide() {
     hideT = setTimeout(() => {
       editToggle.classList.remove('show');
-      document.querySelectorAll('.deck-btn-present').forEach(function (b) { b.classList.remove('show'); });
+      document.querySelectorAll('.deck-btn-present, .deck-btn-view-present').forEach(function (b) { b.classList.remove('show'); });
       pagesToggle.classList.remove('show');
       if (btnSave) btnSave.classList.remove('show');
       if (deckEditChromeEl) deckEditChromeEl.classList.remove('show');
@@ -2750,6 +2783,7 @@
   (function () {
     const el = document.getElementById('deckTitle');
     if (!el) return;
+    el.setAttribute('contenteditable', 'false');
     const initial = (document.title || '').trim();
     if (initial) el.textContent = initial;
     el.addEventListener('input', function () {

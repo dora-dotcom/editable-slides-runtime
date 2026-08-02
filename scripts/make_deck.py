@@ -208,7 +208,7 @@ def obj(oid: str, kind: str, geom: str, inner: str, role: str = '', extra: str =
 
 
 def text_obj(oid: str, geom: str, body: str, role: str, style: str, fx: str = '') -> str:
-    inner = f'<div class="slide-object-text" contenteditable="true" style="{style}">{body}</div>'
+    inner = f'<div class="slide-object-text" contenteditable="false" style="{style}">{body}</div>'
     return obj(oid, 'text', geom, inner, role, fx)
 
 

@@ -1168,3 +1168,25 @@ body.deck-edit-mode .slides-offset > section.slide {
   zoom: var(--canvas-zoom);
   margin: 32px auto;
 }
+
+/* ---------- Three states, and what each one shows ----------
+   View: the deck, plus the two things you can do with it.
+   Edit: the shell — bar, filmstrip, canvas, inspector.
+   Present: the deck full-window, with a control bar that wakes on movement.
+   (Speaker view is a second window, not a fourth state of this one.)
+   Anything that only makes sense while editing says so. */
+.deck-edit-only { display: none !important; }
+body.deck-edit-mode .deck-edit-only { display: inline-flex !important; }
+
+body:not(.deck-edit-mode) .deck-btn-present { display: none; }
+body.deck-edit-mode .deck-btn-view-present { display: none; }
+.deck-btn-view-present {
+  position: relative; z-index: 10001;
+  border: 1px solid var(--deck-chrome-border); background: var(--deck-chrome-bg);
+  color: var(--deck-chrome-text); border-radius: 10px; padding: 8px 12px;
+  font-family: var(--ui-font); font-size: clamp(0.7rem, 1.1vw, 0.875rem);
+  cursor: pointer; opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
+  white-space: nowrap;
+}
+.deck-btn-view-present.show { opacity: 1; pointer-events: auto; }
+body.deck-presenting .deck-btn-view-present { display: none; }
