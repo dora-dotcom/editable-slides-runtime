@@ -1050,3 +1050,33 @@ body.deck-hide-left .slide-sidebar {
    slide centred inside a box that was narrower on the right than the left.
    Reserving the gutter on both edges keeps the margins equal. */
 body.deck-edit-mode .slides-offset { scrollbar-gutter: stable both-edges; }
+
+/* ---------- Thumbnail icons ----------
+   The glyphs were doing the job badly: U+29C9 reads as a plain square, and a
+   colour emoji bin sat oddly beside the chrome's line icons. Both are inline
+   SVG now, drawn the same way as every other icon here. */
+body.deck-edit-mode .filmstrip-item .filmstrip-actions button svg,
+body.deck-edit-mode .filmstrip-eye svg {
+  width: 13px; height: 13px; display: block;
+  fill: none; stroke: currentColor; stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* The eye: on hover like the other actions, but kept on once a slide is
+   skipped — Google Slides does the same, and it is what lets you see at a
+   glance which slides are out of the talk. */
+.filmstrip-eye {
+  position: absolute; right: 6px; bottom: 6px; z-index: 4;
+  width: 22px; height: 22px; padding: 0; border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--ui-line);
+  background: color-mix(in srgb, var(--ui-surface) 86%, transparent);
+  color: var(--ui-ink-2); cursor: pointer;
+  opacity: 0; transition: opacity 0.14s ease;
+  backdrop-filter: blur(3px);
+}
+body.deck-edit-mode .filmstrip-item:hover .filmstrip-eye { opacity: 1; }
+body.deck-edit-mode .filmstrip-item.is-skipped .filmstrip-eye {
+  opacity: 1; color: var(--ui-ink); border-color: var(--ui-line);
+}
+.filmstrip-eye:hover { color: var(--ui-ink); background: var(--ui-surface); }

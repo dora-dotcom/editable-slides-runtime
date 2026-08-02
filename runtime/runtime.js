@@ -828,7 +828,7 @@
         num.textContent = String(idx + 1);
         const dup = document.createElement('button');
         dup.type = 'button';
-        dup.innerHTML = '&#9109;';
+        dup.innerHTML = ICON.duplicate;
         dup.title = 'Duplicate this slide';
         dup.setAttribute('aria-label', 'Duplicate slide');
         dup.addEventListener('click', (ev) => {
@@ -837,7 +837,7 @@
         });
         const del = document.createElement('button');
         del.type = 'button';
-        del.innerHTML = '&#128465;';
+        del.innerHTML = ICON.trash;
         del.title = 'Delete this slide';
         del.setAttribute('aria-label', 'Delete slide');
         del.addEventListener('click', (ev) => {
@@ -861,7 +861,24 @@
         this._fillThumb(slide, host);
         // after _fillThumb: it clears the host to draw the thumbnail
         host.appendChild(num);
-        if (slide.hasAttribute('data-skip')) item.classList.add('is-skipped');
+        const skipped = slide.hasAttribute('data-skip');
+        if (skipped) item.classList.add('is-skipped');
+
+        // Shown on hover, and kept on once a slide is skipped, so the ones
+        // left out of the talk are obvious without hovering every thumbnail.
+        const eye = document.createElement('button');
+        eye.type = 'button';
+        eye.className = 'filmstrip-eye';
+        eye.innerHTML = skipped ? ICON.eyeOff : ICON.eye;
+        eye.title = skipped ? 'Skipped when presenting — click to include' : 'Skip this slide when presenting';
+        eye.setAttribute('aria-label', eye.title);
+        eye.setAttribute('aria-pressed', String(skipped));
+        eye.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          setSkip(slide, !slide.hasAttribute('data-skip'));
+        });
+        eye.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+        host.appendChild(eye);
 
         item.addEventListener('pointerdown', (ev) => {
           if (ev.target.closest('button')) return;
@@ -1460,6 +1477,22 @@
     }
   });
 
+  const ICON = {
+    duplicate: '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+      '<rect x="9" y="9" width="11" height="11" rx="2"/>' +
+      '<path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>',
+    trash: '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+      '<path d="M4 7h16M10 11v6M14 11v6"/>' +
+      '<path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/>' +
+      '<path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>',
+    eye: '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+      '<path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z"/>' +
+      '<circle cx="12" cy="12" r="2.6"/></svg>',
+    eyeOff: '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+      '<path d="M2 12s3.6-6 10-6c1.9 0 3.5.5 4.9 1.2M22 12s-3.6 6-10 6c-1.9 0-3.6-.5-5-1.3"/>' +
+      '<path d="M4 4l16 16"/></svg>'
+  };
+
   /* === Object insertion === */
 
   // Every inserted object has the same anatomy: a percent-positioned
@@ -1928,6 +1961,9 @@
       last = deck.current;
       loadNotesForCurrentSlide();
       syncRoleButtons();
+      // The panel describes the current slide, so it has to follow navigation
+      // as well as selection — otherwise the filmstrip and the panel disagree.
+      syncInspector();
     };
     new MutationObserver(sync).observe(offset, {
       subtree: true, attributes: true, attributeFilter: ['class']
@@ -2044,6 +2080,10 @@
       }
       paintSpeaker();
       paintPresentBar();
+      // Every goTo passes through here, which is the reliable place to keep
+      // the panel describing the slide you are actually looking at.
+      loadNotesForCurrentSlide();
+      syncInspector();
       previous = i;
     };
   })();
@@ -2502,21 +2542,27 @@
     if (t) { t.style.color = ''; syncInspector(); }
   });
 
-  document.addEventListener('change', function (e) {
-    const c = e.target.closest && e.target.closest('[data-slide-skip]');
-    if (!c) return;
-    const slide = currentSlide();
+  // One place flips the flag, so the eye on the thumbnail and the checkbox in
+  // the panel can never disagree about a slide.
+  function setSkip(slide, on) {
     if (!slide) return;
     const before = slide.hasAttribute('data-skip');
-    const apply = function (on) {
-      if (on) slide.setAttribute('data-skip', ''); else slide.removeAttribute('data-skip');
+    if (before === !!on) return;
+    const apply = function (v) {
+      if (v) slide.setAttribute('data-skip', ''); else slide.removeAttribute('data-skip');
       refreshFields();
       sidebar.refresh();
       syncInspector();
     };
-    apply(c.checked);
-    history.push({ undo: function () { apply(before); }, redo: function () { apply(!before); } });
+    apply(!!on);
+    history.push({ undo: function () { apply(before); }, redo: function () { apply(!!on); } });
     updateUndoRedoChrome();
+  }
+
+  document.addEventListener('change', function (e) {
+    const c = e.target.closest && e.target.closest('[data-slide-skip]');
+    if (!c) return;
+    setSkip(currentSlide(), c.checked);
   });
 
   document.addEventListener('input', function (e) {
