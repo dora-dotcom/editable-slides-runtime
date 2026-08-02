@@ -625,7 +625,22 @@
     }
 
     body.deck-edit-mode.slide-anim-paused .reveal { transition: none !important; }
-  </style>
+  
+/* Slide background replace button — visible only in edit mode (added 2026-05) */
+.slide-bg-replace-anchor {
+  position: absolute; z-index: 7; bottom: clamp(8px, 1.5vh, 16px); left: clamp(8px, 1.5vw, 16px);
+  display: none; pointer-events: auto;
+}
+body.deck-edit-mode .slide-bg-replace-anchor { display: block; }
+.slide-bg-replace-btn {
+  font-size: clamp(9px, 0.85vw, 11px); font-weight: 600;
+  color: rgba(255,255,255,0.85); background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.25); border-radius: 6px;
+  padding: 5px 10px; cursor: pointer; letter-spacing: 0.03em;
+  transition: background 0.15s, border-color 0.15s;
+}
+.slide-bg-replace-btn:hover { background: rgba(0,0,0,0.75); border-color: rgba(255,255,255,0.5); }
+</style>
 </head>
 <body>
 <!-- Deck chrome HTML — extracted from frontend-slides-editable/examples/editable-deck-reference.html
