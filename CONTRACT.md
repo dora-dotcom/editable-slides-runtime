@@ -145,6 +145,24 @@ Also honoured where present: `--font-display`, `--slide-padding`,
 
 ---
 
+## Generating a conforming deck
+
+`scripts/make_deck.py` writes one from a design source and a markdown outline,
+so you never have to hand-assemble the structure above:
+
+```bash
+python3 scripts/make_deck.py --content outline.md --design brand.md --output deck.html
+```
+
+The design source can be a tokens `.json`, a `.css` with a `:root` block, or a
+`design.md` — for the prose case it reads the hex colours and font names it
+finds, taking the darkest as ink, the lightest as paper and the most saturated
+as the accent. That is a guess, not a parse; anything it gets wrong is one edit
+away in the deck, and anything it misses falls back.
+
+Output carries roles, entrance animations, a live page field and a chart where
+the outline asks for one — a worked example of everything above.
+
 ## Making an existing deck conform
 
 `scripts/port_to_editable.py` does the mechanical part on any HTML deck:

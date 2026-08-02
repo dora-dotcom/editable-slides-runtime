@@ -24,7 +24,17 @@ test suite unchanged — inserted tables, charts and shapes fall back to
 
 ## Use it
 
-Port an existing deck:
+Build a deck from your design and your content:
+
+```bash
+python3 scripts/make_deck.py --content outline.md --design brand.md --output deck.html
+```
+
+`--design` takes a tokens `.json`, a `.css` with a `:root` block, or a
+`design.md` that just names its colours and fonts in prose. Leave it out and
+the deck still works — every token the runtime reads has a fallback.
+
+Port an existing deck instead:
 
 ```bash
 python3 scripts/port_to_editable.py --source your-deck.html --output editable.html
@@ -45,6 +55,7 @@ python3 scripts/refresh_runtime.py --file editable.html
 |---|---|
 | `runtime/` | The whole thing — `runtime.js`, `chrome.html`, `chrome.css`, `viewport-base.css` |
 | `CONTRACT.md` | What a deck must provide. Read this before generating one |
+| `scripts/make_deck.py` | Build a conforming deck from a design source and a markdown outline |
 | `scripts/port_to_editable.py` | Wrap an existing HTML deck to the contract |
 | `scripts/refresh_runtime.py` | Re-inject the current runtime into a deck |
 | `scripts/extract_style_from_url.py` | Derive a palette, fonts and tokens from a live page |

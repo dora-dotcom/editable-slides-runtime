@@ -9,6 +9,12 @@
   const MAX_HISTORY = 60;
   const RESIZE_MIN_FRAC = 0.05;
 
+  // Declared up here rather than beside the chart code: a document that already
+  // contains a chart repaints during startup, which runs before a `const` lower
+  // in the file has been initialised.
+  const CHART_FILL = 'var(--deck-chrome-accent, currentColor)';
+  const CHART_INK = 'var(--text-primary, currentColor)';
+
   function prefersReducedMotion() {
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   }
@@ -1529,9 +1535,6 @@
   function seriesText(series) {
     return series.map(function (d) { return d.label + ' ' + d.value; }).join(', ');
   }
-
-  const CHART_FILL = 'var(--deck-chrome-accent, currentColor)';
-  const CHART_INK = 'var(--text-primary, currentColor)';
 
   function renderChart(type, series) {
     if (!series.length) return '';
