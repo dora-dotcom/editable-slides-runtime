@@ -2,16 +2,17 @@
 
 **Bring your own design. The runtime makes it editable.**
 
-This runtime does not care what a deck looks like. It is byte-identical across
-all 43 presets in this repo, whose designs have nothing in common — brutalist,
-pastel, terminal-green, editorial. What it needs is not a design, it is a
+This runtime does not care what a deck looks like. It was byte-identical across
+the 43 preset designs this repo used to vendor — brutalist, pastel,
+terminal-green, editorial, nothing in common — which is why they were retired:
+they were never a dependency. What the runtime needs is not a design, it is a
 *structure*. Meet the structure below and the editor works: drag, resize, snap,
 rich text, page management, tables, charts, shapes, speaker notes, export.
 
 That means a deck built to your company's design system, to a `design.md`, to a
 theme you found on GitHub, or generated from scratch by an agent, is editable
-without borrowing anything from this repo. The presets here are examples, not a
-dependency.
+without borrowing anything from this repo. Verified rather than claimed: a deck
+with **zero** CSS custom properties passes the whole test suite unchanged.
 
 ---
 
@@ -171,9 +172,9 @@ that opens anywhere with nothing installed. That means a change here does not
 reach a deck until it is re-injected:
 
 ```bash
-python3 scripts/refresh_runtime.py --check    # what would change
-python3 scripts/refresh_runtime.py            # do it
-python3 scripts/refresh_runtime.py --id studio
+python3 scripts/refresh_runtime.py --file deck.html --check   # what would change
+python3 scripts/refresh_runtime.py --file deck.html           # do it
+python3 scripts/refresh_runtime.py --file 'decks/*.html'      # globs work
 ```
 
 ---
@@ -181,8 +182,8 @@ python3 scripts/refresh_runtime.py --id studio
 ## What the runtime deliberately does not do
 
 - **Impose a design.** No opinion on typography, colour, spacing or layout.
-- **Require these presets.** They are examples. Delete them and the runtime is
-  unaffected.
+- **Require any particular design.** The preset library that used to live here
+  was deleted without the runtime noticing.
 - **Convert arbitrary decks by itself.** Meeting the structure is a decision
   about what should be editable, and that needs a person or a model in the loop.
   See `port_to_editable.py` for the mechanical half.
