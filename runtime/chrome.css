@@ -1080,3 +1080,28 @@ body.deck-edit-mode .filmstrip-item.is-skipped .filmstrip-eye {
   opacity: 1; color: var(--ui-ink); border-color: var(--ui-line);
 }
 .filmstrip-eye:hover { color: var(--ui-ink); background: var(--ui-surface); }
+
+/* The first version of these handles set left/right on the opposite sides.
+   Both declarations survived, and on a fixed element that has a width, `left`
+   wins — which parked the right-hand handle at x = -17, off screen. Pin each
+   handle to its own edge and explicitly release the other. */
+body.deck-edit-mode .deck-panel-handle--left  { left: var(--shell-left); right: auto; }
+body.deck-edit-mode .deck-panel-handle--right { right: var(--shell-right); left: auto; }
+
+/* ---------- The slide, sitting in the canvas ----------
+   It filled almost the whole canvas, so its edge was hard to find. Smaller,
+   with room around it and a hairline edge — a page on a desk rather than a
+   page that is the desk. */
+body.deck-edit-mode .slides-offset > section.slide {
+  width: min(calc(100vw - var(--shell-left) - var(--shell-right) - var(--shell-gutter) * 2 - 120px), 1120px);
+  height: auto; aspect-ratio: 16 / 9;
+  margin: 40px auto;
+  border: 1px solid var(--ui-line);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05), 0 10px 30px rgba(0,0,0,0.09);
+}
+/* Where the page ends is the one line that has to be unambiguous. */
+body.deck-edit-mode .slides-offset > section.slide::after {
+  content: ''; position: absolute; inset: -1px; pointer-events: none;
+  border: 1px dashed color-mix(in srgb, var(--ui-ink) 22%, transparent);
+  border-radius: 4px;
+}
