@@ -105,7 +105,7 @@ body.deck-edit-mode .deck-edit-chrome.show {
 }
 .deck-edit-chrome svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
-.edit-toggle, .sidebar-pages-toggle, .deck-btn-save, .deck-btn-present {
+.edit-toggle, .deck-btn-present {
   position: relative;
   z-index: 10001;
   border: 1px solid var(--deck-chrome-border);
@@ -113,15 +113,18 @@ body.deck-edit-mode .deck-edit-chrome.show {
   font-size: clamp(0.7rem, 1.1vw, 0.875rem); cursor: pointer; opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
   white-space: nowrap;
 }
-.deck-btn-save { display: none; }
-body.deck-edit-mode .deck-btn-save {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.edit-toggle.show, .edit-toggle.active,
+.deck-btn-present.show, .deck-btn-present.active { opacity: 1; pointer-events: auto; }
+
+/* Saving is automatic, so the only thing the bar owes anyone is the receipt:
+   a word next to the title that appears when a write lands and fades. */
+.deck-save-note {
+  font-size: 0.7rem; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--deck-chrome-muted, #8a8a8a);
+  opacity: 0; transition: opacity 0.3s ease; pointer-events: none;
+  white-space: nowrap;
 }
-.edit-toggle.show, .edit-toggle.active, .sidebar-pages-toggle.show, .sidebar-pages-toggle.active,
-.deck-btn-present.show, .deck-btn-present.active,
-body.deck-edit-mode .deck-btn-save.show { opacity: 1; pointer-events: auto; }
+.deck-save-note.is-on { opacity: 1; }
 /* Presenting is a viewing action: offer it when not editing, and never
    alongside the editor's own toolbar. */
 body.deck-edit-mode .deck-btn-present { display: none; }
@@ -467,9 +470,7 @@ body.deck-edit-mode .deck-left-hover-anchor {
 body.deck-edit-mode .deck-left-row { display: flex; align-items: center; gap: 6px; }
 body.deck-edit-mode .deck-left-row--tools { margin-left: auto; }
 /* In the shell the buttons are always there — no hover reveal to hunt for. */
-body.deck-edit-mode .edit-toggle,
-body.deck-edit-mode .sidebar-pages-toggle,
-body.deck-edit-mode .deck-btn-save { opacity: 1 !important; pointer-events: auto !important; }
+body.deck-edit-mode .edit-toggle { opacity: 1 !important; pointer-events: auto !important; }
 body.deck-edit-mode .edit-toggle { display: none; }
 
 /* --- filmstrip moves to the left, always open --- */

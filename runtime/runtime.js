@@ -281,8 +281,6 @@
         // off, so without this it survived the trip and reappeared over the
         // deck on the way back.
         document.body.classList.remove('deck-sidebar-open');
-        const pages = document.getElementById('pagesToggle');
-        if (pages) pages.classList.remove('active');
         document.querySelectorAll('.slide-object-text[contenteditable="true"]').forEach((el) => {
           el.contentEditable = 'false';
         });
@@ -820,7 +818,8 @@
     setOpen(on) {
       this.open = !!on;
       document.body.classList.toggle('deck-sidebar-open', on);
-      document.getElementById('pagesToggle').classList.toggle('active', on);
+      const railBtn = document.getElementById('pagesToggle');
+      if (railBtn) railBtn.classList.toggle('active', on);
       if (on) this.refresh();
     }
     toggle() { this.setOpen(!this.open); }
@@ -1160,7 +1159,7 @@
     sanitizeEditableState(docEl);
     const filmstrip = docEl.querySelector('#filmstripList');
     if (filmstrip) filmstrip.innerHTML = '';
-    ['#editToggle', '#pagesToggle', '#btnSave', '#deckEditChrome', '#rteToolbar'].forEach((selector) => {
+    ['#editToggle', '#deckEditChrome', '#rteToolbar'].forEach((selector) => {
       const el = docEl.querySelector(selector);
       if (!el) return;
       el.classList.remove('show', 'active', 'visible');
@@ -1182,6 +1181,45 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch (e) { console.warn(e); }
   }
+
+  /* Nobody should have to remember to save their own deck, so the runtime
+   * does it: every change schedules a write, and the write is coalesced so
+   * that holding a key down does not serialise the deck on each letter.
+   * Bento reached the same conclusion — it has no Save button either. */
+  let saveT = null;
+  let saveNoteT = null;
+  function noteSaved() {
+    const note = document.getElementById('deckSaveNote');
+    if (!note) return;
+    note.textContent = 'Saved';
+    note.classList.add('is-on');
+    clearTimeout(saveNoteT);
+    saveNoteT = setTimeout(function () { note.classList.remove('is-on'); }, 1600);
+  }
+  function flushSave() {
+    clearTimeout(saveT);
+    saveT = null;
+    saveState();
+    noteSaved();
+  }
+  function scheduleSave() {
+    if (!editor.active) return;
+    clearTimeout(saveT);
+    saveT = setTimeout(flushSave, 900);
+  }
+  /* A pending write must not die with the tab. pagehide fires on close, on
+   * navigation and on the bfcache path, which beforeunload does not. */
+  /* Typing does not go through the history stack on every letter, so text has
+   * to be watched directly or a page of prose would sit unsaved. */
+  document.addEventListener('input', function (e) {
+    const t = e.target;
+    if (!t || !t.closest) return;
+    if (t.closest('.slides-offset') || t.id === 'deckTitle' || t.hasAttribute('data-notes-input')) scheduleSave();
+  }, true);
+  window.addEventListener('pagehide', function () { if (saveT) { clearTimeout(saveT); saveState(); } });
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden' && saveT) { clearTimeout(saveT); saveState(); }
+  });
 
   function loadState() {
     try {
@@ -1283,8 +1321,7 @@
   const deckEditChromeEl = document.getElementById('deckEditChrome');
   const deckLeftHover = document.getElementById('deckLeftHover');
   const editToggle = document.getElementById('editToggle');
-  const pagesToggle = document.getElementById('pagesToggle');
-  const btnSave = document.getElementById('btnSave');
+
 
   function updateUndoRedoChrome() {
     if (btnUndo) {
@@ -1295,6 +1332,7 @@
       btnRedo.disabled = !history.canRedo();
       btnRedo.setAttribute('aria-disabled', btnRedo.disabled ? 'true' : 'false');
     }
+    scheduleSave();
   }
 
   const history = new HistoryStack(updateUndoRedoChrome);
@@ -1369,12 +1407,9 @@
   function exitEditMode() {
     editor.setActive(false);
     editToggle.classList.remove('active');
-    pagesToggle.classList.remove('active');
     sidebar.setOpen(false);
     editToggle.classList.remove('show');
-    pagesToggle.classList.remove('show');
     if (deckEditChromeEl) deckEditChromeEl.classList.remove('show');
-    if (btnSave) btnSave.classList.remove('show');
     updateUndoRedoChrome();
   }
 
@@ -1392,24 +1427,21 @@
     deck._updateChrome();
   };
 
-  /* Top-left cluster: hover reveals controls (Edit / Pages / in edit mode Undo·Redo·Done) */
+  /* Top-left cluster: hover reveals controls (Edit / Present, and in edit
+     mode the toolbar) */
   let hideT = null;
   function showToggles() {
     clearTimeout(hideT);
     editToggle.classList.add('show');
     document.querySelectorAll('.deck-btn-present, .deck-btn-view-present').forEach(function (b) { b.classList.add('show'); });
-    pagesToggle.classList.add('show');
-    if (document.body.classList.contains('deck-edit-mode')) {
-      if (btnSave) btnSave.classList.add('show');
-      if (deckEditChromeEl) deckEditChromeEl.classList.add('show');
+    if (document.body.classList.contains('deck-edit-mode') && deckEditChromeEl) {
+      deckEditChromeEl.classList.add('show');
     }
   }
   function scheduleHide() {
     hideT = setTimeout(() => {
       editToggle.classList.remove('show');
       document.querySelectorAll('.deck-btn-present, .deck-btn-view-present').forEach(function (b) { b.classList.remove('show'); });
-      pagesToggle.classList.remove('show');
-      if (btnSave) btnSave.classList.remove('show');
       if (deckEditChromeEl) deckEditChromeEl.classList.remove('show');
     }, 400);
   }
@@ -1419,28 +1451,14 @@
   }
   editToggle.addEventListener('mouseenter', () => clearTimeout(hideT));
   editToggle.addEventListener('mouseleave', scheduleHide);
-  pagesToggle.addEventListener('mouseenter', () => clearTimeout(hideT));
-  pagesToggle.addEventListener('mouseleave', scheduleHide);
   if (deckEditChromeEl) {
     deckEditChromeEl.addEventListener('mouseenter', () => clearTimeout(hideT));
     deckEditChromeEl.addEventListener('mouseleave', scheduleHide);
   }
-  if (btnSave) {
-    btnSave.addEventListener('mouseenter', () => clearTimeout(hideT));
-    btnSave.addEventListener('mouseleave', scheduleHide);
-  }
-
   editToggle.addEventListener('click', () => {
     if (!editor.active) enterEditMode();
   });
 
-  pagesToggle.addEventListener('click', () => {
-    sidebar.toggle();
-    pagesToggle.classList.toggle('active', sidebar.open);
-    if (sidebar.open) sidebar.refresh();
-  });
-
-  if (btnSave) btnSave.addEventListener('click', saveState);
   document.getElementById('btnExport').addEventListener('click', exportHtml);
   document.getElementById('btnExportPdf').addEventListener('click', exportPdf);
 
@@ -1464,8 +1482,10 @@
       else enterEditMode();
     }
     if (editor.active && (e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+      /* Saving is automatic, but the reflex is decades old and a browser
+       * "save page" dialog here would be worse than useless. */
       e.preventDefault();
-      saveState();
+      flushSave();
     }
     if (editor.active && !ce && (e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
       e.preventDefault();
@@ -3005,7 +3025,7 @@
   deck._updateChrome();
 
   // Startup self-check: warn if any critical runtime element is absent
-  (['editToggle','pagesToggle','deckEditChrome','btnExport','btnExportPdf','rteToolbar','filmstripList'])
+  (['editToggle','deckEditChrome','btnExport','btnExportPdf','rteToolbar','filmstripList'])
     .filter((id) => !document.getElementById(id))
     .forEach((id) => console.error('[deck-runtime] Missing required element: #' + id));
 })();
