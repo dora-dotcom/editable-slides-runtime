@@ -72,6 +72,7 @@ The move and resize handles are added by the runtime; you do not write them.
 | `shape` | `.slide-object-shape > svg`, plus `data-shape="rect\|ellipse\|line\|arrow"` | Inline SVG, `preserveAspectRatio="none"`, strokes marked `vector-effect="non-scaling-stroke"` |
 | `table` | `.slide-object-table > table`, cells are `.slide-object-text[contenteditable]` | `table-layout:fixed`, or one filled cell claims the row |
 | `chart` | `.slide-object-chart > svg`, plus `data-chart="bar\|line\|pie"` and `data-chart-data="Q1 12, Q2 18"` | Drawn by the runtime from the data attribute; no charting library |
+| `media` | `.slide-object-media > video\|audio`, plus `data-media="video\|audio"` | Embedded as a data URI to keep the deck one file. A clip embeds at roughly 4/3 its size, so the editor warns above 8 MB — embed short, link long |
 
 You rarely need to write these by hand — the editor inserts them. Write them
 only when generating a deck programmatically.
@@ -89,6 +90,26 @@ Inside any text object, `<span data-field="page">3</span>` keeps the *token* in
 the attribute and the *resolved value* as text. The document stores the token,
 so a page number follows its slide when pages are reordered. Available tokens:
 `page`, `pages`, `title`, `date`, `time`.
+
+### Motion
+
+All optional, all read off the object, all ignored while editing.
+
+| Attribute | Effect |
+|---|---|
+| `data-fx-enter="fade \| fade-up \| fade-down \| slide-left \| slide-right \| slide-up \| slide-down"` | Entrance animation when the slide is reached |
+| `data-fx-order="2"` | Stagger step within the entrance; equal values enter together |
+| `data-fx-duration="0.75"` | Entrance duration in seconds; omit for the per-kind default |
+| `data-fx-countup` | Animate every number in the object from zero. Walks the numbers in place, so "$12.4M in Q3" animates the 12.4 and leaves the rest |
+
+**Morph needs no attribute at all.** Give an object the same `data-oid` on two
+slides and it glides between them: arriving at the second one animates it from
+the first one's box. Both frames are already stated by the two slides, so there
+is nothing to infer and nothing to configure. Change the geometry between the
+two and the motion designs itself.
+
+Motion is a viewing behaviour — none of it runs in edit mode, where it would
+fight a drag — and all of it respects `prefers-reduced-motion`.
 
 ### Speaker notes
 

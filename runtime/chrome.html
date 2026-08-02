@@ -19,6 +19,7 @@
       <button type="button" data-insert="table" title="Insert a table">Table</button>
       <button type="button" data-insert="chart" title="Insert a chart">Chart</button>
       <button type="button" data-insert="image" title="Insert an image">Image</button>
+      <button type="button" data-insert="media" title="Insert video or audio">Media</button>
       <button type="button" data-shape="rect" aria-label="Rectangle" title="Rectangle">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="1"/></svg>
       </button>
@@ -32,13 +33,27 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h13M13 7l5 5-5 5"/></svg>
       </button>
     </span>
+    <span class="deck-chrome-group" role="group" aria-label="Motion" style="display:inline-flex;gap:2px;margin:0 4px;">
+      <select data-fx-enter-set title="Entrance animation for the selected object" aria-label="Entrance">
+        <option value="">No entrance</option>
+        <option value="fade">Fade</option>
+        <option value="fade-up">Fade up</option>
+        <option value="fade-down">Fade down</option>
+        <option value="slide-left">Slide from right</option>
+        <option value="slide-right">Slide from left</option>
+        <option value="slide-up">Slide from below</option>
+        <option value="slide-down">Slide from above</option>
+      </select>
+      <button type="button" data-fx-countup-toggle title="Animate the numbers in this object from zero">0→9</button>
+    </span>
     <button type="button" class="deck-btn-done" id="btnDoneEdit">Done</button>
   </div>
 </div>
 
-<!-- hidden file inputs for image upload -->
+<!-- hidden file inputs for image and media upload -->
 <input type="file" id="deckImgInput"   accept="image/*" style="display:none">
 <input type="file" id="deckBgInput"    accept="image/*" style="display:none">
+<input type="file" id="deckMediaInput" accept="video/*,audio/*" style="display:none">
 
 <div class="progress-bar" id="progressBar"></div>
 <nav class="nav-dots" id="navDots" aria-label="Slides"></nav>

@@ -1821,6 +1821,162 @@
     sync();
   })();
 
+  /* === Motion: morph, entrances, count-up === */
+
+  // Morph is geometry-driven, not inference: an object that appears on two
+  // slides under the same data-oid already states both of its frames, so
+  // arriving at the second one animates it FROM the first one's box. Percent
+  // geometry makes the two comparable without caring where either slide sits.
+  function boxWithin(obj, slide) {
+    const o = obj.getBoundingClientRect();
+    const s = slide.getBoundingClientRect();
+    return { x: o.left - s.left, y: o.top - s.top, w: o.width, h: o.height };
+  }
+
+  function morphInto(slideIndex, fromIndex) {
+    if (prefersReducedMotion() || fromIndex === slideIndex) return;
+    const slides = deck.slides || [];
+    const from = slides[fromIndex];
+    const to = slides[slideIndex];
+    if (!from || !to) return;
+
+    to.querySelectorAll('[data-slide-object][data-oid]').forEach(function (obj) {
+      const oid = obj.getAttribute('data-oid');
+      const twin = from.querySelector('[data-oid="' + CSS.escape(oid) + '"]');
+      if (!twin || twin === obj) return;
+
+      const a = boxWithin(twin, from);
+      const b = boxWithin(obj, to);
+      if (!b.w || !b.h) return;
+      const dx = a.x - b.x, dy = a.y - b.y;
+      const sx = a.w / b.w, sy = a.h / b.h;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sx - 1) < 0.01 && Math.abs(sy - 1) < 0.01) return;
+
+      obj.animate(
+        [
+          { transformOrigin: 'top left', transform: 'translate(' + dx + 'px,' + dy + 'px) scale(' + sx + ',' + sy + ')' },
+          { transformOrigin: 'top left', transform: 'none' }
+        ],
+        { duration: 520, easing: 'cubic-bezier(.22,.61,.36,1)' }
+      );
+    });
+  }
+
+  const FX_ENTER = {
+    'fade': [{ opacity: 0 }, { opacity: 1 }],
+    'fade-up': [{ opacity: 0, transform: 'translateY(16px)' }, { opacity: 1, transform: 'none' }],
+    'fade-down': [{ opacity: 0, transform: 'translateY(-16px)' }, { opacity: 1, transform: 'none' }],
+    'slide-left': [{ opacity: 0, transform: 'translateX(120px)' }, { opacity: 1, transform: 'none' }],
+    'slide-right': [{ opacity: 0, transform: 'translateX(-120px)' }, { opacity: 1, transform: 'none' }],
+    'slide-up': [{ opacity: 0, transform: 'translateY(120px)' }, { opacity: 1, transform: 'none' }],
+    'slide-down': [{ opacity: 0, transform: 'translateY(-120px)' }, { opacity: 1, transform: 'none' }]
+  };
+
+  function playEntrances(slide) {
+    if (prefersReducedMotion() || !slide) return;
+    slide.querySelectorAll('[data-fx-enter]').forEach(function (obj) {
+      const frames = FX_ENTER[obj.getAttribute('data-fx-enter')] || FX_ENTER.fade;
+      const order = parseInt(obj.getAttribute('data-fx-order') || '0', 10) || 0;
+      const dur = parseFloat(obj.getAttribute('data-fx-duration') || '') || (frames.length && frames[0].transform ? 750 : 550);
+      obj.animate(frames, { duration: dur, delay: order * 90, easing: 'cubic-bezier(.22,.61,.36,1)', fill: 'backwards' });
+    });
+  }
+
+  // Count-up walks the numbers already in the text rather than replacing it, so
+  // "$12.4M in Q3" animates the 12.4 and leaves the rest alone.
+  function playCountUps(slide) {
+    if (prefersReducedMotion() || !slide) return;
+    slide.querySelectorAll('[data-fx-countup]').forEach(function (obj) {
+      const target = obj.querySelector('.slide-object-text') || obj;
+      if (target.dataset._countupSource === undefined) target.dataset._countupSource = target.innerHTML;
+      const source = target.dataset._countupSource;
+      const numbers = source.match(/-?\d[\d,]*\.?\d*/g);
+      if (!numbers) return;
+
+      const started = performance.now();
+      const DUR = 900;
+      const step = function (now) {
+        const t = Math.min(1, (now - started) / DUR);
+        const eased = 1 - Math.pow(1 - t, 3);
+        let i = 0;
+        target.innerHTML = source.replace(/-?\d[\d,]*\.?\d*/g, function (raw) {
+          const clean = raw.replace(/,/g, '');
+          const value = parseFloat(clean);
+          const decimals = (clean.split('.')[1] || '').length;
+          i += 1;
+          const shown = (value * eased).toFixed(decimals);
+          return raw.indexOf(',') === -1 ? shown : Number(shown).toLocaleString(undefined, {
+            minimumFractionDigits: decimals, maximumFractionDigits: decimals
+          });
+        });
+        if (t < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
+  }
+
+  (function () {
+    let previous = deck.current;
+    const already = deck.onSlideChange;
+    deck.onSlideChange = function (i) {
+      if (typeof already === 'function') already(i);
+      const slide = (deck.slides || [])[i];
+      // Motion belongs to viewing, not editing: it would fight a drag.
+      if (!editor.active) {
+        morphInto(i, previous);
+        playEntrances(slide);
+        playCountUps(slide);
+      }
+      previous = i;
+    };
+  })();
+
+  /* === Media === */
+
+  // Embedding is what keeps a deck one file, but a clip embeds as base64 at
+  // roughly 4/3 its size — so warn at the point of choosing, the way Bento's
+  // "embed short, link long" rule does, rather than after the file is huge.
+  const MEDIA_INLINE_WARN = 8 * 1024 * 1024;
+
+  function mediaMarkup(kind, src) {
+    const common = 'width:100%;height:100%;display:block;pointer-events:none;';
+    return '<div class="slide-object-media" style="width:100%;height:100%;">' +
+      (kind === 'audio'
+        ? '<audio src="' + src + '" controls style="' + common + 'height:auto;pointer-events:auto;"></audio>'
+        : '<video src="' + src + '" controls playsinline style="' + common + 'object-fit:contain;pointer-events:auto;"></video>') +
+      '</div>';
+  }
+
+  (function () {
+    const inp = document.getElementById('deckMediaInput');
+    if (!inp) return;
+    document.querySelectorAll('[data-insert="media"]').forEach(function (btn) {
+      btn.addEventListener('click', function () { if (editor.active) inp.click(); });
+    });
+    inp.addEventListener('change', function (e) {
+      const file = e.target.files[0];
+      inp.value = '';
+      if (!file) return;
+      const kind = file.type.indexOf('audio') === 0 ? 'audio' : 'video';
+      if (file.size > MEDIA_INLINE_WARN) {
+        const mb = Math.round(file.size / 1024 / 1024);
+        const grown = Math.round(file.size * 1.34 / 1024 / 1024);
+        if (!window.confirm(
+          'That clip is ' + mb + ' MB. Embedding keeps the deck a single file, but it ' +
+          'will add about ' + grown + ' MB to it.\n\nEmbed it anyway?\n\n' +
+          'Cancel, and you can host the clip and paste its URL into the object instead.'
+        )) return;
+      }
+      const reader = new FileReader();
+      reader.onload = function (ev) {
+        const obj = insertObject('media', mediaMarkup(kind, ev.target.result),
+          kind === 'audio' ? { left: 20, top: 78, width: 60, height: 8 } : null);
+        if (obj) obj.setAttribute('data-media', kind);
+      };
+      reader.readAsDataURL(file);
+    });
+  })();
+
   /* === Insert toolbar wiring === */
 
   (function () {
@@ -1855,7 +2011,47 @@
         if (editor.active) applyRole(btn.getAttribute('data-role-set'));
       });
     });
+
+    // Motion controls act on the selected object and are undoable, like roles.
+    function setObjAttr(obj, name, value) {
+      const before = obj.getAttribute(name);
+      if (before === value) return;
+      const apply = function (v) {
+        if (v) obj.setAttribute(name, v); else obj.removeAttribute(name);
+        syncMotionControls();
+      };
+      apply(value);
+      history.push({ undo: function () { apply(before); }, redo: function () { apply(value); } });
+      updateUndoRedoChrome();
+    }
+
+    const fxSelect = document.querySelector('[data-fx-enter-set]');
+    if (fxSelect) {
+      fxSelect.addEventListener('change', function () {
+        const obj = document.querySelector('.slide-object.is-selected');
+        if (obj && editor.active) setObjAttr(obj, 'data-fx-enter', fxSelect.value || null);
+      });
+    }
+    const countBtn = document.querySelector('[data-fx-countup-toggle]');
+    if (countBtn) {
+      countBtn.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+        const obj = document.querySelector('.slide-object.is-selected');
+        if (obj && editor.active) {
+          setObjAttr(obj, 'data-fx-countup', obj.hasAttribute('data-fx-countup') ? null : 'true');
+        }
+      });
+    }
   })();
+
+  function syncMotionControls() {
+    const obj = document.querySelector('.slide-object.is-selected');
+    const sel = document.querySelector('[data-fx-enter-set]');
+    const btn = document.querySelector('[data-fx-countup-toggle]');
+    if (sel) sel.value = (obj && obj.getAttribute('data-fx-enter')) || '';
+    if (btn) btn.classList.toggle('active', !!(obj && obj.hasAttribute('data-fx-countup')));
+  }
+  document.addEventListener('click', syncMotionControls, true);
 
   /* === Image features === */
 

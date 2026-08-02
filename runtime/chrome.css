@@ -321,3 +321,16 @@ body.deck-edit-mode .slide-bg-replace-anchor { display: block; }
 body.deck-edit-mode .slide-object-text [data-field] {
   outline: 1px dashed var(--deck-chrome-border, rgba(0,0,0,0.3)); outline-offset: 1px;
 }
+
+/* ---------- Motion controls ---------- */
+.deck-edit-chrome select[data-fx-enter-set] {
+  font: inherit; font-size: 11px; padding: 2px 4px; border-radius: 4px;
+  border: 1px solid var(--deck-chrome-border, rgba(0,0,0,0.15));
+  background: transparent; color: inherit; max-width: 140px;
+}
+.deck-edit-chrome [data-fx-countup-toggle].active {
+  background: var(--deck-chrome-accent, rgba(0,0,0,0.12));
+  color: var(--deck-chrome-surface, #fff);
+}
+/* Motion is a viewing behaviour; editing must not fight a drag. */
+body.deck-edit-mode [data-fx-enter] { opacity: 1 !important; transform: none !important; }
