@@ -14,13 +14,46 @@
     <button type="button" id="btnRedo" aria-label="Redo" title="Redo (Ctrl+Y / Ctrl+Shift+Z)">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 14l4-4-4-4M19 10h-8a5 5 0 000 10h2"/></svg>
     </button>
+    <span class="deck-chrome-group" role="group" aria-label="Insert" style="display:inline-flex;gap:2px;margin:0 4px;">
+      <button type="button" data-insert="text"  title="Insert a text box">Text</button>
+      <button type="button" data-insert="table" title="Insert a table">Table</button>
+      <button type="button" data-insert="chart" title="Insert a chart">Chart</button>
+      <button type="button" data-insert="image" title="Insert an image">Image</button>
+      <button type="button" data-insert="media" title="Insert video or audio">Media</button>
+      <button type="button" data-shape="rect" aria-label="Rectangle" title="Rectangle">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="1"/></svg>
+      </button>
+      <button type="button" data-shape="ellipse" aria-label="Ellipse" title="Ellipse">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg>
+      </button>
+      <button type="button" data-shape="line" aria-label="Line" title="Line">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18L20 6"/></svg>
+      </button>
+      <button type="button" data-shape="arrow" aria-label="Arrow" title="Arrow">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h13M13 7l5 5-5 5"/></svg>
+      </button>
+    </span>
+    <span class="deck-chrome-group" role="group" aria-label="Motion" style="display:inline-flex;gap:2px;margin:0 4px;">
+      <select data-fx-enter-set title="Entrance animation for the selected object" aria-label="Entrance">
+        <option value="">No entrance</option>
+        <option value="fade">Fade</option>
+        <option value="fade-up">Fade up</option>
+        <option value="fade-down">Fade down</option>
+        <option value="slide-left">Slide from right</option>
+        <option value="slide-right">Slide from left</option>
+        <option value="slide-up">Slide from below</option>
+        <option value="slide-down">Slide from above</option>
+      </select>
+      <button type="button" data-fx-countup-toggle title="Animate the numbers in this object from zero">0→9</button>
+    </span>
     <button type="button" class="deck-btn-done" id="btnDoneEdit">Done</button>
   </div>
 </div>
 
-<!-- hidden file inputs for image upload -->
+<!-- hidden file inputs for image and media upload -->
 <input type="file" id="deckImgInput"   accept="image/*" style="display:none">
 <input type="file" id="deckBgInput"    accept="image/*" style="display:none">
+<input type="file" id="deckMediaInput" accept="video/*,audio/*" style="display:none">
 
 <div class="progress-bar" id="progressBar"></div>
 <nav class="nav-dots" id="navDots" aria-label="Slides"></nav>
@@ -28,6 +61,11 @@
 <aside class="slide-sidebar" id="slideSidebar" aria-label="Slide pages">
   <h3>Slides</h3>
   <div class="filmstrip-list" id="filmstripList"></div>
+  <div class="slide-notes-block">
+    <label class="slide-notes-label" for="slideNotes">Speaker notes</label>
+    <textarea id="slideNotes" class="slide-notes" rows="4"
+      placeholder="Notes for this slide — saved in the file, so they travel with it."></textarea>
+  </div>
   <div class="filmstrip-actions" style="margin-top:auto;flex-direction:column;gap:6px;">
     <button type="button" id="btnAddImage" style="width:100%;">＋ Add Image</button>
     <button type="button" id="btnExport" style="width:100%;">Export HTML</button>
@@ -46,6 +84,20 @@
   <span class="rte-toolbar-group" aria-label="Font size">
     <button type="button" data-size-step="-1" title="Smaller (1px)">A−</button>
     <button type="button" data-size-step="1" title="Larger (1px)">A+</button>
+  </span>
+  <span class="rte-toolbar-group" aria-label="Role">
+    <span class="rte-toolbar-meta">Role</span>
+    <button type="button" data-role-set="title" title="Mark as the title">Title</button>
+    <button type="button" data-role-set="subtitle" title="Mark as the subtitle">Sub</button>
+    <button type="button" data-role-set="body" title="Mark as body text">Body</button>
+    <button type="button" data-role-set="kicker" title="Mark as a kicker">Kicker</button>
+  </span>
+  <span class="rte-toolbar-group" aria-label="Insert field">
+    <span class="rte-toolbar-meta">Field</span>
+    <button type="button" data-field-insert="page" title="Page number, kept live">#</button>
+    <button type="button" data-field-insert="pages" title="Total pages, kept live">/n</button>
+    <button type="button" data-field-insert="title" title="Deck title, kept live">Title</button>
+    <button type="button" data-field-insert="date" title="Today's date">Date</button>
   </span>
 </div>
 
