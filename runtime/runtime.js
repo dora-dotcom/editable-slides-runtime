@@ -115,7 +115,8 @@
     goTo(i) {
       this.refreshSlides();
       i = Math.max(0, Math.min(this.slides.length - 1, i));
-      this.slides[i].scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+      const instant = prefersReducedMotion() || document.body.classList.contains('deck-presenting');
+      this.slides[i].scrollIntoView({ behavior: instant ? 'auto' : 'smooth' });
       this.current = i;
       this._updateChrome();
       this.onSlideChange && this.onSlideChange(i);
@@ -1249,6 +1250,7 @@
   function showToggles() {
     clearTimeout(hideT);
     editToggle.classList.add('show');
+    document.querySelectorAll('.deck-btn-present').forEach(function (b) { b.classList.add('show'); });
     pagesToggle.classList.add('show');
     if (document.body.classList.contains('deck-edit-mode')) {
       if (btnSave) btnSave.classList.add('show');
@@ -1258,6 +1260,7 @@
   function scheduleHide() {
     hideT = setTimeout(() => {
       editToggle.classList.remove('show');
+      document.querySelectorAll('.deck-btn-present').forEach(function (b) { b.classList.remove('show'); });
       pagesToggle.classList.remove('show');
       if (btnSave) btnSave.classList.remove('show');
       if (deckEditChromeEl) deckEditChromeEl.classList.remove('show');

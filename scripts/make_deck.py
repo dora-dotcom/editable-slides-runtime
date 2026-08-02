@@ -292,6 +292,35 @@ section.slide {
 """
 
 
+GENERIC_FAMILIES = {
+    'serif', 'sans-serif', 'monospace', 'system-ui', 'ui-monospace', 'cursive',
+    'fantasy', 'inherit', 'initial', '-apple-system', 'blinkmacsystemfont',
+}
+
+
+def font_link(tokens: dict) -> str:
+    """Load the families the tokens name, so a deck does not silently fall back.
+
+    Naming a font in a token and never fetching it is the quiet failure here: the
+    deck renders in something else and looks nothing like the design it was
+    given. Google Fonts covers most of what a design system names; a family it
+    does not have simply is not returned, and the local fallback still applies.
+    """
+    families = []
+    for key in ('--font-display', '--font-body', '--font-mono'):
+        first = tokens.get(key, '').split(',')[0].strip().strip('"\'')
+        if first and first.lower() not in GENERIC_FAMILIES and first not in families:
+            families.append(first)
+    if not families:
+        return ''
+    spec = '&'.join('family=' + f.replace(' ', '+') + ':wght@400;500;700;900' for f in families)
+    return (
+        '<link rel="preconnect" href="https://fonts.googleapis.com">\n'
+        '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
+        f'<link rel="stylesheet" href="https://fonts.googleapis.com/css2?{spec}&display=swap">\n'
+    )
+
+
 def build(tokens: dict, slides: list[dict], title: str, deck_id: str) -> str:
     token_lines = '\n'.join(f'  {k}: {v};' for k, v in sorted(tokens.items()))
     body = ''.join(render_slide(s, i) for i, s in enumerate(slides))
@@ -300,6 +329,7 @@ def build(tokens: dict, slides: list[dict], title: str, deck_id: str) -> str:
         f'<html lang="en" data-deck-id="{deck_id}">\n<head>\n'
         '<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         f'<title>{html_mod.escape(title)}</title>\n'
+        + font_link(tokens) +
         '<style>\n' + BASE_CSS % {'tokens': token_lines} + '</style>\n'
         '</head>\n<body>\n' + body + '</body>\n</html>\n'
     )

@@ -105,7 +105,7 @@ body.deck-edit-mode .deck-edit-chrome.show {
 }
 .deck-edit-chrome svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
-.edit-toggle, .sidebar-pages-toggle, .deck-btn-save {
+.edit-toggle, .sidebar-pages-toggle, .deck-btn-save, .deck-btn-present {
   position: relative;
   z-index: 10001;
   border: 1px solid var(--deck-chrome-border);
@@ -120,7 +120,11 @@ body.deck-edit-mode .deck-btn-save {
   justify-content: center;
 }
 .edit-toggle.show, .edit-toggle.active, .sidebar-pages-toggle.show, .sidebar-pages-toggle.active,
+.deck-btn-present.show, .deck-btn-present.active,
 body.deck-edit-mode .deck-btn-save.show { opacity: 1; pointer-events: auto; }
+/* Presenting is a viewing action: offer it when not editing, and never
+   alongside the editor's own toolbar. */
+body.deck-edit-mode .deck-btn-present { display: none; }
 
 /* === sidebar === */
 .slide-sidebar {
@@ -378,3 +382,8 @@ body.deck-presenting .nav-dots,
 body.deck-presenting .slide-object-move,
 body.deck-presenting .slide-object-resize { display: none !important; }
 body.deck-presenting .slides-offset { padding: 0 !important; }
+
+/* Presenting shows exactly one slide. Native snapping does it without the
+   runtime having to compute offsets, and it catches a stray wheel too. */
+body.deck-presenting { scroll-snap-type: y mandatory; }
+body.deck-presenting section.slide { scroll-snap-align: start; scroll-snap-stop: always; }
