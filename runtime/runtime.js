@@ -256,6 +256,7 @@
       document.body.classList.toggle('deck-edit-mode', on);
       document.body.classList.toggle('slide-anim-paused', on);
       if (on) {
+        setTimeout(function () { if (zoomFit) fitZoom(); }, 0);
         ensureResizeHandles(document);
         ensureObjectControls(document);
         repaintCharts(document);
@@ -2338,6 +2339,7 @@
     if (!h) return;
     const which = h.getAttribute('data-panel-toggle');
     document.body.classList.toggle('deck-hide-' + which);
+    if (zoomFit) setTimeout(fitZoom, 0);
   });
 
   // The font list is read off the document: whatever --font-* it defines is
@@ -2689,6 +2691,46 @@
     updateUndoRedoChrome();
     syncInspector();
   });
+
+  /* === Canvas zoom === */
+
+  // The slide keeps its full size and the canvas scales it, the way Bento and
+  // Slides both do — so "smaller" is a view setting rather than a change to
+  // the deck. Fit is the default and recomputes on resize.
+  const ZOOM_STEPS = [0.25, 0.35, 0.5, 0.65, 0.8, 0.9, 1, 1.25, 1.5, 2];
+  let zoomFit = true;
+  let zoomLevel = 1;
+
+  function applyZoom() {
+    document.body.style.setProperty('--canvas-zoom', String(zoomLevel));
+    const label = document.getElementById('deckZoomLevel');
+    if (label) label.textContent = zoomFit ? 'Fit' : Math.round(zoomLevel * 100) + '%';
+  }
+
+  function fitZoom() {
+    const canvas = document.querySelector('.slides-offset');
+    const slide = (deck.slides || [])[0];
+    if (!canvas || !slide) return;
+    const avail = canvas.clientWidth - 96;
+    const natural = parseFloat(getComputedStyle(document.body).getPropertyValue('--slide-natural-w')) || 1280;
+    zoomLevel = Math.max(0.2, Math.min(1, avail / natural));
+    applyZoom();
+  }
+
+  document.addEventListener('click', function (e) {
+    const b = e.target.closest && e.target.closest('[data-zoom]');
+    if (!b) return;
+    const what = b.getAttribute('data-zoom');
+    if (what === 'fit') { zoomFit = true; fitZoom(); return; }
+    zoomFit = false;
+    let i = ZOOM_STEPS.findIndex(function (z) { return z >= zoomLevel - 0.001; });
+    if (i === -1) i = ZOOM_STEPS.length - 1;
+    i = Math.max(0, Math.min(ZOOM_STEPS.length - 1, i + (what === '+' ? 1 : -1)));
+    zoomLevel = ZOOM_STEPS[i];
+    applyZoom();
+  });
+
+  window.addEventListener('resize', function () { if (zoomFit) fitZoom(); });
 
   /* === Slide actions === */
 

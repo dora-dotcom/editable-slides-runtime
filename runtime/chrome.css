@@ -1120,3 +1120,51 @@ body:not(.deck-edit-mode) .slide-sidebar { display: none; }
 /* Export sits with Present and Done — things you do to the whole deck — and
    opens leftwards so it does not run off the edge of the window. */
 .deck-menu--end .deck-menu-list { left: auto; right: 0; }
+
+/* ---------- Canvas zoom ----------
+   The slide keeps its own size; the canvas scales it. Shrinking the slide
+   itself was the wrong reading of "make it smaller" — that changed the deck's
+   proportions on screen rather than how much of it you are looking at. */
+body.deck-edit-mode { --canvas-zoom: 1; --slide-natural-w: 1280px; }
+body.deck-edit-mode .slides-offset > section.slide {
+  width: var(--slide-natural-w); height: auto; aspect-ratio: 16 / 9;
+  transform: scale(var(--canvas-zoom)); transform-origin: top center;
+  margin: 32px auto calc(32px - (1 - var(--canvas-zoom)) * var(--slide-natural-w) * 0.5625);
+}
+.deck-zoom {
+  position: fixed; right: calc(var(--shell-right) + 20px); bottom: 20px; z-index: 9200;
+  display: none; align-items: center; gap: 2px; padding: 4px;
+  border-radius: 999px; background: var(--ui-surface);
+  border: 1px solid var(--ui-line); box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+body.deck-edit-mode .deck-zoom { display: flex; }
+.deck-zoom button {
+  height: 26px; min-width: 26px; padding: 0 8px; border: 0; border-radius: 999px;
+  background: transparent; color: var(--ui-ink); cursor: pointer;
+  font-family: var(--ui-font); font-size: 12px; line-height: 1;
+}
+.deck-zoom button:hover { background: var(--ui-hover); }
+#deckZoomLevel { font-family: var(--ui-mono); font-size: 11px; min-width: 46px; color: var(--ui-ink-2); }
+
+/* ---------- Smaller previews ---------- */
+body.deck-edit-mode { --shell-left: 176px; }
+body.deck-edit-mode .slide-sidebar { padding: var(--ui-pad) 9px; gap: 8px; }
+
+/* ---------- Icons that sit straight ----------
+   A button is inline-block by default, so a block-level svg inside it lands on
+   the text baseline and rides high with descender space beneath — which is
+   what made these two look crooked next to the eye, which was already flex. */
+body.deck-edit-mode .filmstrip-item .filmstrip-actions button {
+  display: flex; align-items: center; justify-content: center;
+}
+body.deck-edit-mode .filmstrip-item .filmstrip-actions button svg { width: 14px; height: 14px; }
+
+/* transform: scale() shrinks the pixels but not the layout box, so a
+   1280px-wide slide still asked for 1280px inside a narrower canvas and got
+   clipped. `zoom` participates in layout, and because it scales the slide and
+   everything in it together, the editor's percentage maths is unaffected. */
+body.deck-edit-mode .slides-offset > section.slide {
+  transform: none;
+  zoom: var(--canvas-zoom);
+  margin: 32px auto;
+}
