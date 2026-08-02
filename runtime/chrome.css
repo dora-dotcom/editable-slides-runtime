@@ -263,3 +263,35 @@ body.deck-edit-mode .slide-bg-replace-anchor { display: block; }
   transition: background 0.15s, border-color 0.15s;
 }
 .slide-bg-replace-btn:hover { background: rgba(0,0,0,0.75); border-color: rgba(255,255,255,0.5); }
+
+/* ---------- Per-object control strips (tables, charts) ----------
+   Editor furniture: shown only while the object is selected in edit mode, and
+   stripped from saves and exports by sanitizeEditableState. */
+.slide-object-tablectl,
+.slide-object-chartctl {
+  position: absolute; left: 0; top: 100%; margin-top: 6px;
+  display: none; gap: 4px; align-items: center; flex-wrap: wrap;
+  padding: 4px 6px; border-radius: 6px; z-index: 8;
+  background: var(--deck-chrome-surface, #fff);
+  border: 1px solid var(--deck-chrome-border, rgba(0,0,0,0.15));
+  box-shadow: var(--deck-chrome-shadow, 0 2px 8px rgba(0,0,0,0.12));
+  font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px;
+  color: var(--deck-chrome-text, inherit);
+}
+.slide-object.is-selected .slide-object-tablectl,
+.slide-object.is-selected .slide-object-chartctl { display: flex; }
+
+.slide-object-tablectl button,
+.slide-object-chartctl button {
+  border: 1px solid var(--deck-chrome-border, rgba(0,0,0,0.15));
+  background: transparent; color: inherit; font: inherit;
+  padding: 2px 6px; border-radius: 4px; cursor: pointer; line-height: 1.4;
+}
+.slide-object-tablectl button:hover,
+.slide-object-chartctl button:hover { background: var(--deck-chrome-accent, rgba(0,0,0,0.08)); }
+
+.slide-object-chartdata {
+  min-width: 160px; padding: 2px 6px; border-radius: 4px; cursor: text;
+  border: 1px dashed var(--deck-chrome-border, rgba(0,0,0,0.25));
+  white-space: nowrap; overflow-x: auto;
+}

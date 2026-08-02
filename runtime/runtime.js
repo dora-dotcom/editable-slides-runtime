@@ -155,6 +155,36 @@
     });
   }
 
+  // Tables and charts carry their own control strips. Those are editor
+  // furniture, stripped on save and export (see sanitizeEditableState), so they
+  // are rebuilt here whenever a document is loaded or restored — the same
+  // contract ensureResizeHandles has.
+  function ensureObjectControls(root) {
+    const el = root || document;
+    el.querySelectorAll('[data-object-type="table"]').forEach((obj) => {
+      if (obj.querySelector('.slide-object-tablectl')) return;
+      obj.insertAdjacentHTML('beforeend',
+        '<div class="slide-object-tablectl" contenteditable="false">' +
+        '<button type="button" data-table="row+" title="Add row">+ Row</button>' +
+        '<button type="button" data-table="row-" title="Remove last row">− Row</button>' +
+        '<button type="button" data-table="col+" title="Add column">+ Col</button>' +
+        '<button type="button" data-table="col-" title="Remove last column">− Col</button>' +
+        '</div>');
+    });
+    el.querySelectorAll('[data-object-type="chart"]').forEach((obj) => {
+      if (obj.querySelector('.slide-object-chartctl')) return;
+      const data = obj.getAttribute('data-chart-data') || '';
+      obj.insertAdjacentHTML('beforeend',
+        '<div class="slide-object-chartctl" contenteditable="false">' +
+        '<button type="button" data-chart-type="bar">Bar</button>' +
+        '<button type="button" data-chart-type="line">Line</button>' +
+        '<button type="button" data-chart-type="pie">Pie</button>' +
+        '<span class="slide-object-chartdata" contenteditable="true" ' +
+        'title="Label value, label value…">' + data.replace(/[<&]/g, '') + '</span>' +
+        '</div>');
+    });
+  }
+
   /* ---------- Editor: select, drag, resize, snap, RTE ---------- */
   class SlideObjectEditor {
     constructor(deck, history) {
@@ -181,6 +211,8 @@
       document.body.classList.toggle('slide-anim-paused', on);
       if (on) {
         ensureResizeHandles(document);
+        ensureObjectControls(document);
+        repaintCharts(document);
       } else {
         this.clearSelection();
         this.toolbar.classList.remove('visible');
@@ -924,6 +956,8 @@
           } else parent.appendChild(node);
           this.deck.refreshSlides();
           ensureResizeHandles(document);
+          ensureObjectControls(document);
+          repaintCharts(document);
           this.deck._updateChrome();
           this.refresh();
         },
@@ -953,6 +987,9 @@
       el.removeAttribute('data-_deck-html-before');
     });
     root.querySelectorAll('.snap-line-v, .snap-line-h').forEach((el) => el.remove());
+    // Per-object editing affordances are rebuilt on load by ensureObjectControls,
+    // so they never need to be written into a saved or exported file.
+    root.querySelectorAll('.slide-object-tablectl, .slide-object-chartctl').forEach((el) => el.remove());
   }
 
   function serializeSlidesRoot(root) {
@@ -1011,6 +1048,8 @@
         });
       } else return;
       ensureResizeHandles(document);
+      ensureObjectControls(document);
+      repaintCharts(document);
       deck.refreshSlides();
       deck._syncCurrentFromScroll();
       deck._updateChrome();
@@ -1110,6 +1149,8 @@
   const sidebar = new SlideSidebar(deck, history);
 
   ensureResizeHandles(document);
+  ensureObjectControls(document);
+  repaintCharts(document);
   editor.bind();
   updateUndoRedoChrome();
 
@@ -1285,6 +1326,8 @@
             if (node) layer.appendChild(node);
           });
           ensureResizeHandles(document);
+          ensureObjectControls(document);
+          repaintCharts(document);
         },
         redo: () => {
           snapshots.forEach((s) => {
@@ -1298,41 +1341,385 @@
     }
   });
 
+  /* === Object insertion === */
+
+  // Every inserted object has the same anatomy: a percent-positioned
+  // .slide-object in the slide's edit layer, carrying a stable oid and a type,
+  // with the move and resize affordances the editor binds to. This generalises
+  // the path the image button used to own privately, so shapes, tables and
+  // charts all arrive undoable and selectable for free.
+
+  const OBJ_GEOM = {
+    graphic: { left: 25, top: 20, width: 30, height: 40 },
+    shape:   { left: 32, top: 36, width: 26, height: 20 },
+    table:   { left: 10, top: 28, width: 62, height: 32 },
+    chart:   { left: 14, top: 24, width: 56, height: 46 },
+    text:    { left: 20, top: 40, width: 45, height: 12 }
+  };
+
+  let oidSeq = 0;
+  function mintOid(kind) {
+    oidSeq += 1;
+    return 's' + deck.current + '-' + kind + '-' + Date.now().toString(36) + oidSeq;
+  }
+
+  function buildObject(kind, innerHtml, geom) {
+    const g = Object.assign({}, OBJ_GEOM[kind] || OBJ_GEOM.shape, geom || {});
+    const obj = document.createElement('div');
+    obj.className = 'slide-object';
+    obj.setAttribute('data-slide-object', '');
+    obj.setAttribute('data-oid', mintOid(kind));
+    obj.setAttribute('data-object-type', kind);
+    obj.style.cssText =
+      'left:' + g.left + '%;top:' + g.top + '%;width:' + g.width + '%;height:' + g.height + '%;';
+    obj.innerHTML =
+      '<button type="button" class="slide-object-move" aria-label="Move">⠿</button>' +
+      '<button type="button" class="slide-object-resize" aria-label="Resize"></button>' +
+      innerHtml;
+    return obj;
+  }
+
+  /** Insert an object on the current slide, undoably. Returns the element. */
+  function insertObject(kind, innerHtml, geom) {
+    const slide = deck.slides[deck.current];
+    const layer = slide && slide.querySelector('.slide-edit-layer');
+    if (!layer) return null;
+    const obj = buildObject(kind, innerHtml, geom);
+    layer.appendChild(obj);
+    ensureResizeHandles(layer);
+    history.push({
+      undo: function () { obj.remove(); },
+      redo: function () { layer.appendChild(obj); ensureResizeHandles(layer); }
+    });
+    updateUndoRedoChrome();
+    if (editor && typeof editor._selectOnly === 'function') editor._selectOnly(obj);
+    return obj;
+  }
+
+  /* === Shapes === */
+
+  // Inline SVG stretched to the object box: it scales with a resize, prints,
+  // and survives export with no external dependency. preserveAspectRatio="none"
+  // lets the box stretch freely; non-scaling-stroke stops the outline from
+  // stretching with it.
+  const SHAPE_SVG = {
+    rect:    '<rect x="2" y="2" width="96" height="96" rx="2" vector-effect="non-scaling-stroke"/>',
+    ellipse: '<ellipse cx="50" cy="50" rx="48" ry="48" vector-effect="non-scaling-stroke"/>',
+    line:    '<line x1="2" y1="50" x2="98" y2="50" vector-effect="non-scaling-stroke"/>',
+    arrow:   '<line x1="2" y1="50" x2="86" y2="50" vector-effect="non-scaling-stroke"/>' +
+             '<polygon points="86,41 99,50 86,59" stroke="none" fill="var(--text-primary, currentColor)"/>'
+  };
+
+  function shapeMarkup(kind) {
+    const filled = kind === 'rect' || kind === 'ellipse';
+    return '<div class="slide-object-shape" style="width:100%;height:100%;pointer-events:none;">' +
+      '<svg viewBox="0 0 100 100" preserveAspectRatio="none" width="100%" height="100%" ' +
+      'fill="' + (filled ? 'var(--deck-chrome-accent, currentColor)' : 'none') + '" ' +
+      'stroke="var(--text-primary, currentColor)" stroke-width="2" ' +
+      'stroke-linecap="round" style="display:block;overflow:visible;">' +
+      (SHAPE_SVG[kind] || SHAPE_SVG.rect) +
+      '</svg></div>';
+  }
+
+  function insertShape(kind) {
+    const geom = (kind === 'line' || kind === 'arrow')
+      ? { left: 30, top: 48, width: 34, height: 6 }
+      : null;
+    const obj = insertObject('shape', shapeMarkup(kind), geom);
+    if (obj) obj.setAttribute('data-shape', kind);
+    return obj;
+  }
+
+  /* === Text === */
+
+  function insertText() {
+    return insertObject('text',
+      '<div class="slide-object-text" contenteditable="true" ' +
+      'style="width:100%;height:100%;font-family:var(--font-body);' +
+      'font-size:var(--body-size, 1rem);color:var(--text-primary, currentColor);">Text</div>');
+  }
+
+  /* === Tables === */
+
+  // Cells carry .slide-object-text and contenteditable, so they plug straight
+  // into the rich-text toolbar rather than needing an editing path of their own.
+  function cellHtml(head, text) {
+    const tag = head ? 'th' : 'td';
+    return '<' + tag + ' class="slide-object-text" contenteditable="true" style="' +
+      'border:1px solid var(--deck-chrome-border, currentColor);padding:0.35em 0.6em;' +
+      'text-align:left;vertical-align:middle;' + (head ? 'font-weight:700;' : 'font-weight:400;') +
+      '">' + text + '</' + tag + '>';
+  }
+
+  function tableMarkup(rows, cols) {
+    let html = '<div class="slide-object-table" style="width:100%;height:100%;overflow:hidden;">' +
+      // table-layout:fixed divides the width evenly; without it one cell with
+      // content claims almost the whole table and the rest collapse.
+      '<table style="width:100%;height:100%;table-layout:fixed;border-collapse:collapse;' +
+      'font-family:var(--font-body);font-size:var(--small-size, 0.9rem);' +
+      'color:var(--text-primary, currentColor);">';
+    for (let r = 0; r < rows; r++) {
+      html += '<tr>';
+      for (let c = 0; c < cols; c++) html += cellHtml(r === 0, r === 0 ? 'Header' : '');
+      html += '</tr>';
+    }
+    return html + '</table></div>';
+  }
+
+  function insertTable() {
+    const obj = insertObject('table', tableMarkup(3, 3));
+    if (obj) ensureObjectControls(obj.parentNode);
+    return obj;
+  }
+
+  // Row/column controls, undoable. The buttons live inside the object and are
+  // revealed by CSS only while it is selected.
+  document.addEventListener('click', function (e) {
+    const btn = e.target.closest && e.target.closest('.slide-object-tablectl [data-table]');
+    if (!btn || !editor.active) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const obj = btn.closest('[data-object-type="table"]');
+    const table = obj && obj.querySelector('table');
+    if (!table) return;
+    const before = table.innerHTML;
+    const rows = table.rows;
+    const action = btn.getAttribute('data-table');
+
+    if (action === 'row+' && rows.length) {
+      const row = table.insertRow(-1);
+      for (let c = 0; c < rows[0].cells.length; c++) row.innerHTML += cellHtml(false, '');
+    } else if (action === 'row-' && rows.length > 1) {
+      table.deleteRow(-1);
+    } else if (action === 'col+') {
+      for (let r = 0; r < rows.length; r++) rows[r].innerHTML += cellHtml(r === 0, r === 0 ? 'Header' : '');
+    } else if (action === 'col-' && rows[0] && rows[0].cells.length > 1) {
+      for (let r = 0; r < rows.length; r++) rows[r].deleteCell(-1);
+    } else {
+      return;
+    }
+
+    const after = table.innerHTML;
+    history.push({
+      undo: function () { table.innerHTML = before; },
+      redo: function () { table.innerHTML = after; }
+    });
+    updateUndoRedoChrome();
+  });
+
+  /* === Charts === */
+
+  // Rendered as inline SVG with no dependency. A deck is a single file that
+  // gets emailed around, so inlining a charting library would put ~200 KB into
+  // every copy — the same reason Bento wrote their own instead of shipping
+  // ECharts. Bar, line and pie cover what a review deck actually needs.
+
+  function parseSeries(text) {
+    return String(text || '').split(',').map(function (pair) {
+      const m = pair.trim().match(/^(.*?)[\s:]+(-?[\d.]+)$/);
+      return m ? { label: m[1].trim(), value: parseFloat(m[2]) || 0 } : null;
+    }).filter(Boolean);
+  }
+
+  function seriesText(series) {
+    return series.map(function (d) { return d.label + ' ' + d.value; }).join(', ');
+  }
+
+  const CHART_FILL = 'var(--deck-chrome-accent, currentColor)';
+  const CHART_INK = 'var(--text-primary, currentColor)';
+
+  function renderChart(type, series) {
+    if (!series.length) return '';
+    const W = 100, H = 62, PAD = 2;
+    const max = Math.max.apply(null, series.map(function (d) { return d.value; })).valueOf() || 1;
+    let body = '';
+
+    if (type === 'pie') {
+      const total = series.reduce(function (s, d) { return s + d.value; }, 0) || 1;
+      let a0 = -Math.PI / 2;
+      const cx = 50, cy = 31, r = 28;
+      series.forEach(function (d, i) {
+        const a1 = a0 + (d.value / total) * Math.PI * 2;
+        const large = a1 - a0 > Math.PI ? 1 : 0;
+        const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
+        const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
+        body += '<path d="M' + cx + ',' + cy + ' L' + x0.toFixed(2) + ',' + y0.toFixed(2) +
+          ' A' + r + ',' + r + ' 0 ' + large + ' 1 ' + x1.toFixed(2) + ',' + y1.toFixed(2) + ' Z" ' +
+          'fill="' + CHART_FILL + '" fill-opacity="' + (1 - i * 0.16).toFixed(2) + '" ' +
+          'stroke="' + CHART_INK + '" stroke-width="0.4"/>';
+        a0 = a1;
+      });
+      return body;
+    }
+
+    const step = (W - PAD * 2) / series.length;
+    if (type === 'line') {
+      const pts = series.map(function (d, i) {
+        const x = PAD + step * (i + 0.5);
+        const y = H - PAD - (d.value / max) * (H - PAD * 3);
+        return x.toFixed(2) + ',' + y.toFixed(2);
+      }).join(' ');
+      body += '<polyline points="' + pts + '" fill="none" stroke="' + CHART_FILL +
+        '" stroke-width="1.6" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>';
+      series.forEach(function (d, i) {
+        const x = PAD + step * (i + 0.5);
+        const y = H - PAD - (d.value / max) * (H - PAD * 3);
+        body += '<circle cx="' + x.toFixed(2) + '" cy="' + y.toFixed(2) + '" r="1.4" fill="' + CHART_FILL + '"/>';
+      });
+    } else {
+      series.forEach(function (d, i) {
+        const bw = step * 0.62;
+        const x = PAD + step * i + (step - bw) / 2;
+        const h = (d.value / max) * (H - PAD * 3);
+        body += '<rect x="' + x.toFixed(2) + '" y="' + (H - PAD - h).toFixed(2) +
+          '" width="' + bw.toFixed(2) + '" height="' + Math.max(h, 0.4).toFixed(2) +
+          '" fill="' + CHART_FILL + '" fill-opacity="' + (1 - i * 0.1).toFixed(2) + '"/>';
+      });
+    }
+
+    body += '<line x1="' + PAD + '" y1="' + (H - PAD) + '" x2="' + (W - PAD) + '" y2="' + (H - PAD) +
+      '" stroke="' + CHART_INK + '" stroke-width="0.4" vector-effect="non-scaling-stroke"/>';
+    series.forEach(function (d, i) {
+      const x = PAD + step * (i + 0.5);
+      body += '<text x="' + x.toFixed(2) + '" y="' + (H + 4) + '" text-anchor="middle" ' +
+        'font-size="4" fill="' + CHART_INK + '" font-family="var(--font-body)">' +
+        String(d.label).replace(/[<&]/g, '') + '</text>';
+    });
+    return body;
+  }
+
+  function paintChart(obj) {
+    const svg = obj.querySelector('.slide-object-chart svg');
+    if (!svg) return;
+    const type = obj.getAttribute('data-chart') || 'bar';
+    const series = parseSeries(obj.getAttribute('data-chart-data'));
+    svg.innerHTML = renderChart(type, series);
+  }
+
+  function chartMarkup() {
+    return '<div class="slide-object-chart" style="width:100%;height:100%;pointer-events:none;">' +
+      '<svg viewBox="0 0 100 70" preserveAspectRatio="none" width="100%" height="100%" ' +
+      'style="display:block;overflow:visible;"></svg></div>';
+  }
+
+  function insertChart() {
+    const obj = insertObject('chart', chartMarkup());
+    if (!obj) return null;
+    obj.setAttribute('data-chart', 'bar');
+    obj.setAttribute('data-chart-data', 'Q1 12, Q2 18, Q3 9, Q4 22');
+    ensureObjectControls(obj.parentNode);
+    paintChart(obj);
+    return obj;
+  }
+
+  // Chart type switch and data edits, both undoable as one step per change.
+  document.addEventListener('click', function (e) {
+    const btn = e.target.closest && e.target.closest('[data-chart-type]');
+    if (!btn || !editor.active) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const obj = btn.closest('[data-object-type="chart"]');
+    if (!obj) return;
+    const before = obj.getAttribute('data-chart');
+    const after = btn.getAttribute('data-chart-type');
+    if (before === after) return;
+    obj.setAttribute('data-chart', after);
+    paintChart(obj);
+    history.push({
+      undo: function () { obj.setAttribute('data-chart', before); paintChart(obj); },
+      redo: function () { obj.setAttribute('data-chart', after); paintChart(obj); }
+    });
+    updateUndoRedoChrome();
+  });
+
+  // Data edits repaint immediately but land in history as one entry per burst,
+  // so undo steps over a typed value rather than a keystroke.
+  const chartEditState = new WeakMap();
+  document.addEventListener('input', function (e) {
+    const span = e.target.closest && e.target.closest('.slide-object-chartdata');
+    if (!span) return;
+    const obj = span.closest('[data-object-type="chart"]');
+    if (!obj) return;
+
+    let state = chartEditState.get(obj);
+    if (!state) {
+      state = { before: obj.getAttribute('data-chart-data') || '', timer: 0 };
+      chartEditState.set(obj, state);
+    }
+    clearTimeout(state.timer);
+
+    obj.setAttribute('data-chart-data', span.textContent);
+    paintChart(obj);
+
+    state.timer = setTimeout(function () {
+      const before = state.before;
+      const after = obj.getAttribute('data-chart-data') || '';
+      chartEditState.delete(obj);
+      if (before === after) return;
+      history.push({
+        undo: function () {
+          obj.setAttribute('data-chart-data', before);
+          const s = obj.querySelector('.slide-object-chartdata');
+          if (s) s.textContent = before;
+          paintChart(obj);
+        },
+        redo: function () {
+          obj.setAttribute('data-chart-data', after);
+          const s = obj.querySelector('.slide-object-chartdata');
+          if (s) s.textContent = after;
+          paintChart(obj);
+        }
+      });
+      updateUndoRedoChrome();
+    }, 500);
+  });
+
+  // Repaint charts restored from storage or a re-render of the filmstrip.
+  function repaintCharts(root) {
+    (root || document).querySelectorAll('[data-object-type="chart"]').forEach(paintChart);
+  }
+
+  /* === Insert toolbar wiring === */
+
+  (function () {
+    document.querySelectorAll('[data-shape]').forEach(function (btn) {
+      if (isDeckChromeNode(btn)) {
+        btn.addEventListener('click', function () {
+          if (editor.active) insertShape(btn.getAttribute('data-shape'));
+        });
+      }
+    });
+    document.querySelectorAll('[data-insert]').forEach(function (btn) {
+      const kind = btn.getAttribute('data-insert');
+      if (kind === 'image') return; // handled with the file input below
+      btn.addEventListener('click', function () {
+        if (!editor.active) return;
+        if (kind === 'text') insertText();
+        else if (kind === 'table') insertTable();
+        else if (kind === 'chart') insertChart();
+      });
+    });
+  })();
+
   /* === Image features === */
 
   // 1. Add image object to current slide
   (function () {
-    var btn = document.getElementById('btnAddImage');
     var inp = document.getElementById('deckImgInput');
-    if (!btn || !inp) return;
-    btn.addEventListener('click', function () { inp.click(); });
+    if (!inp) return;
+    var triggers = [document.getElementById('btnAddImage')]
+      .concat(Array.prototype.slice.call(document.querySelectorAll('[data-insert="image"]')));
+    triggers.forEach(function (btn) {
+      if (btn) btn.addEventListener('click', function () { inp.click(); });
+    });
     inp.addEventListener('change', function (e) {
       var file = e.target.files[0]; if (!file) return;
       var reader = new FileReader();
       reader.onload = function (ev) {
-        var src   = ev.target.result;
-        var slide = deck.slides[deck.current]; if (!slide) return;
-        var layer = slide.querySelector('.slide-edit-layer'); if (!layer) return;
-        var oid   = 's' + deck.current + '-img-' + Date.now();
-        var obj   = document.createElement('div');
-        obj.className = 'slide-object';
-        obj.setAttribute('data-slide-object', '');
-        obj.setAttribute('data-oid', oid);
-        obj.setAttribute('data-object-type', 'graphic');
-        obj.style.cssText = 'left:25%;top:20%;width:30%;height:40%;';
-        obj.innerHTML =
-          '<button type="button" class="slide-object-move" aria-label="Move">⠿</button>' +
-          '<button type="button" class="slide-object-resize" aria-label="Resize"></button>' +
+        insertObject('graphic',
           '<div class="slide-object-graphic" style="width:100%;height:100%;">' +
-          '<img src="' + src + '" alt="" style="max-height:none;width:100%;height:100%;object-fit:contain;pointer-events:none;display:block;">' +
-          '</div>';
-        layer.appendChild(obj);
-        ensureResizeHandles(layer);
-        history.push({
-          undo: function () { var n = document.querySelector('[data-oid="' + oid + '"]'); if (n) n.remove(); },
-          redo: function () { layer.appendChild(obj); ensureResizeHandles(layer); }
-        });
-        updateUndoRedoChrome();
+          '<img src="' + ev.target.result + '" alt="" style="max-height:none;width:100%;height:100%;object-fit:contain;pointer-events:none;display:block;">' +
+          '</div>');
       };
       reader.readAsDataURL(file);
       inp.value = '';
