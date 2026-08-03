@@ -3536,21 +3536,7 @@
     }
   });
 
-  /* A link is present-time behaviour, so it only answers while presenting —
-   * in the editor a click on the same object has to keep selecting it. */
-  document.addEventListener('click', function (e) {
-    if (!document.body.classList.contains('deck-presenting')) return;
-    const hit = e.target.closest && e.target.closest('[data-link]');
-    if (!hit) return;
-    const to = (hit.getAttribute('data-link') || '').trim();
-    if (!to) return;
-    e.preventDefault();
-    const n = parseInt(to, 10);
-    /* A bare number is a page in this deck; anything else is a place on the
-     * web, opened in its own tab so the talk is not navigated away from. */
-    if (String(n) === to && n >= 1) deck.goTo(n - 1);
-    else window.open(to, '_blank', 'noopener');
-  });
+
 
   /* Chart options are attributes, repainted from, so undo restores a word. */
   function chartSet(obj, attr, value) {
@@ -4167,6 +4153,168 @@
       });
       updateUndoRedoChrome();
     }
+  }, true);
+
+
+  /* === Links ===
+   *
+   * There was a link, but only one kind of it: a whole object could carry a
+   * destination, and only while presenting. You could not link three words,
+   * and a deck sent to someone as something to read had dead links in it —
+   * which is most of what a link is for.
+   *
+   * A link on text is an ordinary <a>, so it exports, prints and survives
+   * being opened by anything. A destination inside the deck is a slide number
+   * kept on the element, because a deck's slide ids are not stable across an
+   * edit and a number is what someone means when they say "page 4". */
+
+  function normaliseLink(raw) {
+    const to = String(raw || '').trim();
+    if (!to) return null;
+    if (/^\d+$/.test(to)) return { slide: parseInt(to, 10) };
+    if (/^(https?:|mailto:|tel:)/i.test(to)) return { href: to };
+    /* A bare host is what people type. Treat it as the web, not as a file
+     * beside the deck, which would silently 404. */
+    if (/^[\w.-]+\.[a-z]{2,}(\/|$)/i.test(to)) return { href: 'https://' + to };
+    return { href: to };
+  }
+
+  function linkTargetFor(el) {
+    const slide = el.getAttribute('data-link-slide');
+    if (slide) return { slide: parseInt(slide, 10) };
+    const href = el.getAttribute('href') || el.getAttribute('data-link');
+    if (!href) return null;
+    return normaliseLink(href);
+  }
+
+  function follow(target) {
+    if (!target) return;
+    if (target.slide) deck.goTo(Math.max(0, target.slide - 1));
+    else if (target.href) window.open(target.href, '_blank', 'noopener');
+  }
+
+  (function () {
+    const bar = document.getElementById('rteToolbar');
+    if (!bar) return;
+
+    const add = bar.querySelector('[data-text-link]');
+    if (add) {
+      add.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      add.addEventListener('click', function () {
+        const el = editor._activeTextEl ? editor._activeTextEl() : null;
+        const host = el || textEl(selectedObject());
+        if (!host) return;
+        const range = liveTextRangeIn(host);
+        if (!range) { window.alert('Select the words you want to link first.'); return; }
+        const existing = range.commonAncestorContainer.nodeType === 1
+          ? range.commonAncestorContainer.closest('a')
+          : range.commonAncestorContainer.parentElement.closest('a');
+        const now = existing ? (existing.getAttribute('data-link-slide') || existing.getAttribute('href') || '') : '';
+        const to = normaliseLink(window.prompt('Where should these words go? A page number, or an address.', now));
+        if (!to) return;
+        const before = host.innerHTML;
+        if (existing && host.contains(existing)) {
+          applyLink(existing, to);
+        } else {
+          /* One anchor per line. An <a> cannot hold an <li> any more than a
+           * <span> can, and a selection dragged down a list crosses several. */
+          const spans = styleAcross(range, {});
+          const made = [];
+          spans.forEach(function (span) {
+            if (!span || !span.parentNode) return;
+            const a = document.createElement('a');
+            applyLink(a, to);
+            while (span.firstChild) a.appendChild(span.firstChild);
+            span.parentNode.replaceChild(a, span);
+            made.push(a);
+          });
+          if (made.length) {
+            const back = document.createRange();
+            back.setStartBefore(made[0]);
+            back.setEndAfter(made[made.length - 1]);
+            const sel = window.getSelection();
+            sel.removeAllRanges(); sel.addRange(back);
+            lastTextRange = back.cloneRange();
+          }
+        }
+        const after = host.innerHTML;
+        history.push({
+          undo: function () { host.innerHTML = before; lastTextRange = null; },
+          redo: function () { host.innerHTML = after; lastTextRange = null; }
+        });
+        updateUndoRedoChrome();
+      });
+    }
+
+    const off = bar.querySelector('[data-text-unlink]');
+    if (off) {
+      off.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      off.addEventListener('click', function () {
+        const el = editor._activeTextEl ? editor._activeTextEl() : null;
+        const host = el || textEl(selectedObject());
+        if (!host) return;
+        const range = liveTextRangeIn(host);
+        if (!range) return;
+        /* Every link the selection touches, not only the one its common
+         * ancestor happens to sit in — a selection that starts just before a
+         * link and ends inside it is still a selection of that link. */
+        const hits = Array.prototype.slice.call(host.querySelectorAll('a')).filter(function (a) {
+          try { return range.intersectsNode(a); } catch (e) { return false; }
+        });
+        const node = range.commonAncestorContainer.nodeType === 1
+          ? range.commonAncestorContainer
+          : range.commonAncestorContainer.parentElement;
+        const own = node && node.closest ? node.closest('a') : null;
+        if (own && host.contains(own) && hits.indexOf(own) === -1) hits.push(own);
+        if (!hits.length) return;
+        const before = host.innerHTML;
+        hits.forEach(function (a) {
+          const parent = a.parentNode;
+          while (a.firstChild) parent.insertBefore(a.firstChild, a);
+          a.remove();
+        });
+        lastTextRange = null;
+        const after = host.innerHTML;
+        history.push({
+          undo: function () { host.innerHTML = before; lastTextRange = null; },
+          redo: function () { host.innerHTML = after; lastTextRange = null; }
+        });
+        updateUndoRedoChrome();
+      });
+    }
+  })();
+
+  function applyLink(a, to) {
+    if (to.slide) {
+      a.setAttribute('data-link-slide', String(to.slide));
+      a.setAttribute('href', '#');
+      a.removeAttribute('target');
+      a.removeAttribute('rel');
+    } else {
+      a.setAttribute('href', to.href);
+      a.setAttribute('target', '_blank');
+      a.setAttribute('rel', 'noopener');
+      a.removeAttribute('data-link-slide');
+    }
+  }
+
+  /* Following a link is a reading action, so it works whenever the deck is not
+   * being edited — presenting or simply being read. While editing, a click is
+   * how you put a caret in the words, so it is held back unless asked for with
+   * the modifier every editor uses for exactly this. */
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest) return;
+    const a = e.target.closest('.slides-offset a[href]');
+    const obj = a ? null : e.target.closest('.slides-offset [data-link]');
+    const hit = a || obj;
+    if (!hit) return;
+    const editing = document.body.classList.contains('deck-edit-mode');
+    if (editing && !(e.metaKey || e.ctrlKey)) {
+      if (a) e.preventDefault();
+      return;
+    }
+    e.preventDefault();
+    follow(linkTargetFor(hit));
   }, true);
 
   function syncInspector() {

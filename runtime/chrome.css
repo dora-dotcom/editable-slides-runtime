@@ -1364,3 +1364,21 @@ body.deck-edit-mode .progress-bar { display: none !important; }
 
 /* Save is one button. The things that are not it — a copy, a reading copy,
    a PDF — are files you get, which is what the Export menu already means. */
+
+/* A link has to look like one, in whatever colours the deck brought. The chain
+   ends at currentColor, so a deck that names nothing still gets a readable
+   link rather than a browser blue that belongs to no design. */
+.slides-offset .slide-object-text a {
+  color: var(--link, var(--accent, var(--deck-chrome-accent, currentColor)));
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  text-decoration-thickness: from-font;
+  cursor: pointer;
+}
+body.deck-edit-mode .slides-offset .slide-object-text a { cursor: text; }
+body.deck-edit-mode .slides-offset .slide-object-text a:hover {
+  /* Held back on a plain click while editing, so say what would take it. */
+  text-decoration-style: dotted;
+}
+/* An object carrying a destination is a target too, once reading. */
+body:not(.deck-edit-mode) .slides-offset [data-link] { cursor: pointer; }

@@ -122,7 +122,13 @@ for sid in slides[1:]:
     in_slide(sid, obj('kicker-rule-' + sid, 'shape', 'left:6%;top:14.5%;width:6%;height:0.45%;',
                       shape('var(--accent, #16D342)', 'none', 2)))
 
-# --- 8. notes, because a deck that presents should have something to say -----
+# --- 8. a real link, on the words that name a place --------------------------
+html = html.replace(
+    'github.com/dora-dotcom/editable-slides-runtime',
+    '<a href="https://github.com/dora-dotcom/editable-slides-runtime" target="_blank" '
+    'rel="noopener">github.com/dora-dotcom/editable-slides-runtime</a>', 1)
+
+# --- 9. notes, because a deck that presents should have something to say -----
 notes = {
     slides[0]: 'The file you are looking at is the software. Nothing else was installed.',
     slides[3]: 'Two rules. Everything else in the runtime is built on top of these.',
