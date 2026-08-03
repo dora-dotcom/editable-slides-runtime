@@ -1340,7 +1340,7 @@
     })();
     /* No way to write in place — hand over a copy instead of pretending. */
     const copyInstead = function () {
-      exportHtml(false);
+      exportHtml(!!o.readOnly);
       lastFileAt = new Date();
       dirtySinceFile = false;
       paintSaveNote();
@@ -1402,30 +1402,17 @@
     const btn = document.getElementById('btnSaveFile');
     if (btn) btn.addEventListener('click', function () { flushSave(); saveToFile(); });
 
-    const wrap = document.getElementById('deckSaveWrap');
-    const more = document.getElementById('btnSaveMore');
-    if (more && wrap) {
-      more.addEventListener('click', function (e) {
-        e.stopPropagation();
-        wrap.classList.toggle('open');
-        more.setAttribute('aria-expanded', wrap.classList.contains('open') ? 'true' : 'false');
-      });
-      document.addEventListener('click', function (e) {
-        if (!wrap.contains(e.target)) wrap.classList.remove('open');
-      });
-    }
-    const shut = function () { if (wrap) wrap.classList.remove('open'); };
+    /* A copy and a reading copy are files you come away with, which is what
+     * the Export menu already means — so they live there and Save stays one
+     * button. Where the browser can write in place they go through a picker;
+     * where it cannot, saveToFile hands over a download instead. */
     const copy = document.getElementById('btnSaveCopy');
     if (copy) copy.addEventListener('click', function () {
-      shut(); flushSave(); saveToFile({ pick: true, keepSeparate: true, suffix: ' copy' });
-    });
-    const elsewhere = document.getElementById('btnSaveElsewhere');
-    if (elsewhere) elsewhere.addEventListener('click', function () {
-      shut(); flushSave(); saveToFile({ pick: true });
+      flushSave(); saveToFile({ pick: true, keepSeparate: true, suffix: ' copy' });
     });
     const reading = document.getElementById('btnSaveReading');
     if (reading) reading.addEventListener('click', function () {
-      shut(); flushSave(); saveToFile({ pick: true, keepSeparate: true, readOnly: true, suffix: ' (reading copy)' });
+      flushSave(); saveToFile({ pick: true, keepSeparate: true, readOnly: true, suffix: ' (reading copy)' });
     });
   })();
   function scheduleSave() {
@@ -1741,9 +1728,7 @@
     if (!editor.active) enterEditMode();
   });
 
-  document.getElementById('btnExport').addEventListener('click', function () { exportHtml(false); });
-  const btnExportView = document.getElementById('btnExportView');
-  if (btnExportView) btnExportView.addEventListener('click', function () { exportHtml(true); });
+
   document.getElementById('btnExportPdf').addEventListener('click', exportPdf);
 
   /* A key pressed inside one of the panel's own fields belongs to that field.
@@ -4926,7 +4911,7 @@
   deck._updateChrome();
 
   // Startup self-check: warn if any critical runtime element is absent
-  (['editToggle','deckEditChrome','btnExport','btnExportPdf','rteToolbar','filmstripList'])
+  (['editToggle','deckEditChrome','btnSaveCopy','btnExportPdf','rteToolbar','filmstripList'])
     .filter((id) => !document.getElementById(id))
     .forEach((id) => console.error('[deck-runtime] Missing required element: #' + id));
 })();

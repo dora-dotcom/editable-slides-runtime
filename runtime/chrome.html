@@ -66,22 +66,14 @@
     <div class="deck-menu deck-menu--end deck-edit-only" data-menu="export">
       <button type="button" class="deck-menu-btn" data-menu-toggle aria-haspopup="true" aria-expanded="false">Export</button>
       <div class="deck-menu-list" role="menu">
-        <button type="button" role="menuitem" id="btnExport">HTML file</button>
-        <button type="button" role="menuitem" id="btnExportView" title="A copy that opens as a deck to read, not as an editor">HTML file (reading copy)</button>
-        <button type="button" role="menuitem" id="btnExportPdf">PDF</button>
+        <button type="button" role="menuitem" id="btnSaveCopy">Copy of this deck&hellip;</button>
+        <button type="button" role="menuitem" id="btnSaveReading" title="Opens as a deck to read, not as an editor">Reading copy&hellip;</button>
+        <button type="button" role="menuitem" id="btnExportPdf">PDF&hellip;</button>
       </div>
     </div>
     <button type="button" class="deck-btn-present" data-present="start" title="Present (F5)">Present</button>
     <button type="button" class="deck-btn-done" id="btnDoneEdit">Done</button>
-    <span class="deck-save-wrap deck-edit-only" id="deckSaveWrap">
-      <button type="button" class="deck-btn-save" id="btnSaveFile" title="Write these changes into this file (Ctrl/Cmd+S)">Save</button>
-      <button type="button" class="deck-save-more" id="btnSaveMore" aria-haspopup="true" aria-expanded="false" aria-label="More ways to save">&#9662;</button>
-      <div class="deck-save-menu" role="menu">
-        <button type="button" role="menuitem" id="btnSaveCopy">Save a copy&hellip;</button>
-        <button type="button" role="menuitem" id="btnSaveElsewhere">Save somewhere else&hellip;</button>
-        <button type="button" role="menuitem" id="btnSaveReading">Save a reading copy&hellip;</button>
-      </div>
-    </span>
+    <button type="button" class="deck-btn-save deck-edit-only" id="btnSaveFile" title="Write these changes into this file (Ctrl/Cmd+S)">Save</button>
   </div>
 </div>
 
