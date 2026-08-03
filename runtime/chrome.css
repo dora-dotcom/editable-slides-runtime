@@ -6,7 +6,11 @@
 /* === deck chrome (fixed UI) === */
 .progress-bar {
   position: fixed; top: 0; left: 0; height: 3px;
-  background: linear-gradient(90deg, var(--deck-chrome-accent), #a78bfa);
+  /* A runtime with no opinion about how a deck looks cannot hand one a colour
+     it never asked for. This used to fade the deck's accent into a hard-coded
+     purple, so a design with a single accent got a second one across the top of
+     every slide. */
+  background: var(--deck-chrome-accent, currentColor);
   width: 0%; z-index: 8000; pointer-events: none;
 }
 .nav-dots {
@@ -174,11 +178,12 @@ body.deck-sidebar-open .slides-offset { padding-right: min(200px, 28vw); }
 .filmstrip-item.is-current { border-color: var(--deck-chrome-accent); }
 .filmstrip-item.dragging { opacity: 0.55; }
 .filmstrip-item .filmstrip-drop-line {
-  display: none; height: 3px; background: #a78bfa; border-radius: 2px; margin: 4px 0;
+  display: none; height: 3px; background: var(--deck-chrome-accent, currentColor);
+  border-radius: 2px; margin: 4px 0;
 }
 .filmstrip-item.drop-before .filmstrip-drop-line-before { display: block; }
 .filmstrip-item.drop-after .filmstrip-drop-line-after { display: block; }
-.filmstrip-thumb-host { width: 100%; aspect-ratio: 16/9; overflow: hidden; border-radius: 6px; background: #020617; }
+.filmstrip-thumb-host { width: 100%; aspect-ratio: 16/9; overflow: hidden; border-radius: 6px; background: var(--deck-chrome-bg, #eeeeec); }
 .filmstrip-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; gap: 4px; }
 .filmstrip-actions button {
   font-size: 11px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--deck-chrome-border);
@@ -229,6 +234,9 @@ body.deck-edit-mode .slide-object.is-selected .slide-object-resize { display: bl
 .slide-object-graphic { width: 100%; height: 100%; box-sizing: border-box; }
 
 .snap-line-v, .snap-line-h {
+  /* A fixed hue on purpose: a guide has to read as the tool rather than as the
+     deck, and has to stay visible whatever the deck's own colours are. It is
+     editor furniture and never leaves in an export. */
   position: absolute; background: #f472b6; pointer-events: none; z-index: 7; opacity: 0.85;
 }
 .snap-line-v { width: 1px; top: 0; bottom: 0; }

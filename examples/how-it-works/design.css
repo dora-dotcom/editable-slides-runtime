@@ -1,0 +1,25 @@
+/* Simular, light. One chromatic accent: Simular Lime. Manrope for everything,
+   JetBrains Mono for the tiny tracked labels. Values taken from
+   simular-design-system/colors_and_type.css, [data-theme="light"]. */
+:root {
+  --bg: #f9faf5;
+  --surface: #ffffff;
+  --text-primary: #1a1a1e;
+  --text-secondary: #3c3c44;
+  --text-muted: #6b6b73;
+  --accent: #16D342;
+  --accent-ink: #0B8226;
+  --line: #e2e2df;
+
+  --deck-chrome-accent: #16D342;
+  --deck-chrome-border: #e2e2df;
+
+  --font-display: "Manrope", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-body: "Manrope", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --display-size: 3.6rem;
+  --title-size: 2.4rem;
+  --body-size: 1.05rem;
+  --small-size: 0.82rem;
+}
