@@ -43,9 +43,16 @@
     <button type="button" class="deck-tool" data-insert="image" title="Image">
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 16l-5-5-5 5-2-2-4 4"/></svg><span>Image</span>
     </button>
-    <button type="button" class="deck-tool" data-insert="media" title="Video or audio">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M11 10l4 2-4 2z"/></svg><span>Media</span>
-    </button>
+    <div class="deck-menu" data-menu="media">
+      <button type="button" class="deck-tool deck-menu-btn" data-menu-toggle aria-haspopup="true" aria-expanded="false" title="Video or audio">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M11 10l4 2-4 2z"/></svg><span>Media</span>
+      </button>
+      <div class="deck-menu-list" role="menu">
+        <button type="button" role="menuitem" data-insert="media">Video or audio file…</button>
+        <button type="button" role="menuitem" data-insert="media-link" data-media-kind="video">Video from a link…</button>
+        <button type="button" role="menuitem" data-insert="media-link" data-media-kind="audio">Audio from a link…</button>
+      </div>
+    </div>
     <button type="button" class="deck-tool" data-insert="table" title="Table">
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 10h18M3 15h18M9 5v14M15 5v14"/></svg><span>Table</span>
     </button>
@@ -267,22 +274,56 @@
   <section class="deck-sect" id="sectTable" hidden>
     <h4 class="deck-sect-head" data-fold><span class="deck-sect-caret"></span>Table</h4>
     <div class="deck-sect-body">
-      <div class="deck-field"><span class="deck-field-label">Rows</span>
-        <div class="deck-field-row"><button type="button" data-table="row+">Add</button><button type="button" data-table="row-">Remove</button></div>
-      </div>
       <div class="deck-field"><span class="deck-field-label">Columns</span>
-        <div class="deck-field-row"><button type="button" data-table="col+">Add</button><button type="button" data-table="col-">Remove</button></div>
+        <div class="deck-field-row deck-stepper">
+          <button type="button" data-table="col-" aria-label="One fewer column">&minus;</button>
+          <span data-table-cols>3</span>
+          <button type="button" data-table="col+" aria-label="One more column">+</button>
+        </div>
       </div>
-      <div class="deck-field"><span class="deck-field-label">Header</span>
-        <div class="deck-field-row"><button type="button" data-table-header title="Treat the first row as a header">Header row</button></div>
+      <div class="deck-field"><span class="deck-field-label">Rows</span>
+        <div class="deck-field-row deck-stepper">
+          <button type="button" data-table="row-" aria-label="One fewer row">&minus;</button>
+          <span data-table-rows>3</span>
+          <button type="button" data-table="row+" aria-label="One more row">+</button>
+        </div>
       </div>
-      <div class="deck-field"><span class="deck-field-label">Grid</span>
+      <div class="deck-field"><span class="deck-field-label">Header row</span>
+        <div class="deck-field-row"><input type="checkbox" data-table-header aria-label="Treat the first row as a header"></div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Preset</span>
         <div class="deck-field-row">
-          <select data-table-lines aria-label="Grid lines">
-            <option value="all">All lines</option>
-            <option value="rows">Rows only</option>
-            <option value="none">No lines</option>
+          <select data-table-preset aria-label="Table style">
+            <option value="boxed">Boxed</option>
+            <option value="lines">Lines</option>
+            <option value="striped">Striped</option>
+            <option value="plain">Plain</option>
           </select>
+        </div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Header fill</span>
+        <div class="deck-field-row"><input type="color" data-table-head-fill><button type="button" data-table-clear="head-fill">Clear</button></div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Header text</span>
+        <div class="deck-field-row"><input type="color" data-table-head-text><button type="button" data-table-clear="head-text">Clear</button></div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Text</span>
+        <div class="deck-field-row"><input type="color" data-table-text><button type="button" data-table-clear="text">Clear</button></div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Grid lines</span>
+        <div class="deck-field-row">
+          <input type="color" data-table-line>
+          <select data-table-lines aria-label="Which grid lines">
+            <option value="all">All</option>
+            <option value="rows">Rows</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Font</span>
+        <div class="deck-field-row">
+          <input type="number" data-table-font min="6" max="120" step="1" aria-label="Text size"><i class="deck-unit">px</i>
+          <input type="number" data-table-radius min="0" max="60" step="1" aria-label="Corner radius"><i class="deck-unit">r</i>
         </div>
       </div>
       <div class="deck-field"><span class="deck-field-label">Padding</span>
@@ -291,6 +332,8 @@
           <input type="number" data-table-pad-y min="0" max="4" step="0.05" aria-label="Padding down"><i class="deck-unit">y</i>
         </div>
       </div>
+      <p class="deck-field-hint">Click a cell to type in it. Tab moves across, Enter moves down.</p>
+      <div class="deck-field-row"><button type="button" data-table-to-chart>Make a chart from this table &rarr;</button></div>
     </div>
   </section>
 
@@ -306,6 +349,21 @@
       </div>
       <div class="deck-field"><span class="deck-field-label">Data</span>
         <div class="deck-field-row"><input type="text" data-chart-data-input placeholder="Q1 12, Q2 18"></div>
+      </div>
+      <p class="deck-field-hint">One entry per comma: a label then its numbers. Give a label two numbers and you get two series.</p>
+      <div class="deck-field"><span class="deck-field-label">Series names</span>
+        <div class="deck-field-row"><input type="text" data-chart-names placeholder="Plan, Actual"></div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Show</span>
+        <div class="deck-field-row deck-field-row--icons">
+          <button type="button" data-chart-flag="labels" title="Labels under each entry">Labels</button>
+          <button type="button" data-chart-flag="values" title="The number on each bar or point">Values</button>
+          <button type="button" data-chart-flag="legend" title="Which colour is which series">Legend</button>
+          <button type="button" data-chart-flag="grid" title="Lines across the back">Grid</button>
+        </div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Colour</span>
+        <div class="deck-field-row"><input type="color" data-chart-colour><button type="button" data-chart-colour-reset>Reset</button></div>
       </div>
     </div>
   </section>

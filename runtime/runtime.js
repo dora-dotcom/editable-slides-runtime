@@ -217,16 +217,10 @@
   // contract ensureResizeHandles has.
   function ensureObjectControls(root) {
     const el = root || document;
-    el.querySelectorAll('[data-object-type="table"]').forEach((obj) => {
-      if (obj.querySelector('.slide-object-tablectl')) return;
-      obj.insertAdjacentHTML('beforeend',
-        '<div class="slide-object-tablectl" contenteditable="false">' +
-        '<button type="button" data-table="row+" title="Add row">+ Row</button>' +
-        '<button type="button" data-table="row-" title="Remove last row">− Row</button>' +
-        '<button type="button" data-table="col+" title="Add column">+ Col</button>' +
-        '<button type="button" data-table="col-" title="Remove last column">− Col</button>' +
-        '</div>');
-    });
+    /* The table's own strip is gone: rows and columns are in the panel, with a
+     * count beside them, and two places to do one thing is one too many. Any
+     * strip a document arrived carrying is taken out here. */
+    el.querySelectorAll('.slide-object-tablectl').forEach((strip) => strip.remove());
     el.querySelectorAll('[data-object-type="chart"]').forEach((obj) => {
       if (obj.querySelector('.slide-object-chartctl')) return;
       const data = obj.getAttribute('data-chart-data') || '';
@@ -1729,14 +1723,17 @@
     return obj;
   }
 
-  // Row/column controls, undoable. The buttons live inside the object and are
-  // revealed by CSS only while it is selected.
+  /* Rows and columns, undoable. These used to be reachable only through a
+   * strip floating on the object — the identical buttons in the properties
+   * panel matched no selector and did nothing at all. The panel is where a
+   * table's properties live, so the handler answers to both and the strip is
+   * gone. */
   document.addEventListener('click', function (e) {
-    const btn = e.target.closest && e.target.closest('.slide-object-tablectl [data-table]');
+    const btn = e.target.closest && e.target.closest('[data-table]');
     if (!btn || !editor.active) return;
     e.preventDefault();
     e.stopPropagation();
-    const obj = btn.closest('[data-object-type="table"]');
+    const obj = btn.closest('[data-object-type="table"]') || selectedObject();
     const table = obj && obj.querySelector('table');
     if (!table) return;
     const before = table.innerHTML;
@@ -1756,13 +1753,46 @@
       return;
     }
 
+    paintTable(table);
     const after = table.innerHTML;
     history.push({
-      undo: function () { table.innerHTML = before; },
-      redo: function () { table.innerHTML = after; }
+      undo: function () { table.innerHTML = before; paintTable(table); syncInspector(); },
+      redo: function () { table.innerHTML = after; paintTable(table); syncInspector(); }
     });
     updateUndoRedoChrome();
+    syncInspector();
   });
+
+  /* Tab across, Enter down. Without this Tab left the table entirely and
+   * Enter opened a new line inside a cell, which is never what someone
+   * filling in a table means. */
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Tab' && e.key !== 'Enter') return;
+    const cell = e.target.closest && e.target.closest('.slide-object-table th, .slide-object-table td');
+    if (!cell || cell.getAttribute('contenteditable') !== 'true') return;
+    const row = cell.parentElement;
+    const table = cell.closest('table');
+    if (!table || !row) return;
+    const ci = Array.prototype.indexOf.call(row.cells, cell);
+    const ri = Array.prototype.indexOf.call(table.rows, row);
+    let next = null;
+    if (e.key === 'Tab') {
+      const step = e.shiftKey ? -1 : 1;
+      next = row.cells[ci + step] ||
+        (table.rows[ri + step] && table.rows[ri + step].cells[step > 0 ? 0 : table.rows[ri + step].cells.length - 1]);
+    } else {
+      const step = e.shiftKey ? -1 : 1;
+      next = table.rows[ri + step] && table.rows[ri + step].cells[ci];
+    }
+    if (!next) return;
+    e.preventDefault();
+    next.focus();
+    const sel = window.getSelection();
+    const r = document.createRange();
+    r.selectNodeContents(next);
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }, true);
 
   /* === Charts === */
 
@@ -1771,87 +1801,204 @@
   // every copy — the same reason Bento wrote their own instead of shipping
   // ECharts. Bar, line and pie cover what a review deck actually needs.
 
+  /* A label followed by one or more numbers. One number is the old single
+   * series and still parses; two or more give a series each, which is what a
+   * plan-against-actual chart needs. `value` stays on every entry so anything
+   * written against the old shape keeps working. */
   function parseSeries(text) {
     return String(text || '').split(',').map(function (pair) {
-      const m = pair.trim().match(/^(.*?)[\s:]+(-?[\d.]+)$/);
-      return m ? { label: m[1].trim(), value: parseFloat(m[2]) || 0 } : null;
+      const m = pair.trim().match(/^(.*?)[\s:]+((?:-?[\d.]+[\s:]*)+)$/);
+      if (!m) return null;
+      const values = m[2].trim().split(/[\s:]+/).map(function (n) { return parseFloat(n) || 0; });
+      return { label: m[1].trim(), values: values, value: values[0] };
     }).filter(Boolean);
   }
 
   function seriesText(series) {
-    return series.map(function (d) { return d.label + ' ' + d.value; }).join(', ');
+    return series.map(function (d) {
+      return d.label + ' ' + (d.values || [d.value]).join(' ');
+    }).join(', ');
   }
 
-  function renderChart(type, series) {
+  function seriesCount(series) {
+    return series.reduce(function (n, d) { return Math.max(n, (d.values || [d.value]).length); }, 1);
+  }
+
+  /* Shapes are drawn in SVG that stretches to the object's box. Text cannot
+   * live in there — preserveAspectRatio="none" would squash the letters with
+   * it — which is why this chart had no labels at all. The words are laid over
+   * the top as HTML instead, positioned in percent, so they stay upright and
+   * take the deck's own font. */
+  function renderChart(type, series, opts) {
     if (!series.length) return '';
+    const o = opts || {};
     const W = 100, H = 62, PAD = 2;
-    const max = Math.max.apply(null, series.map(function (d) { return d.value; })).valueOf() || 1;
+    const n = seriesCount(series);
+    const all = series.reduce(function (a, d) { return a.concat(d.values || [d.value]); }, []);
+    const max = Math.max.apply(null, all).valueOf() || 1;
+    const tint = function (i) { return (1 - i * 0.22).toFixed(2); };
+    const fill = o.colour || CHART_FILL;
+    /* A legend is drawn across the top, so the plot has to give it room —
+     * without this the tallest column ran under the key and its own value
+     * label landed on top of it. */
+    const TOP = o.legend ? 11 : 0;
+    const RISE = H - PAD * 3 - TOP;
     let body = '';
 
     if (type === 'pie') {
-      const total = series.reduce(function (s, d) { return s + d.value; }, 0) || 1;
+      const total = series.reduce(function (s, d) { return s + (d.values ? d.values[0] : d.value); }, 0) || 1;
       let a0 = -Math.PI / 2;
       const cx = 50, cy = 31, r = 28;
       series.forEach(function (d, i) {
-        const a1 = a0 + (d.value / total) * Math.PI * 2;
+        const v = d.values ? d.values[0] : d.value;
+        const a1 = a0 + (v / total) * Math.PI * 2;
         const large = a1 - a0 > Math.PI ? 1 : 0;
         const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
         const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
         body += '<path d="M' + cx + ',' + cy + ' L' + x0.toFixed(2) + ',' + y0.toFixed(2) +
           ' A' + r + ',' + r + ' 0 ' + large + ' 1 ' + x1.toFixed(2) + ',' + y1.toFixed(2) + ' Z" ' +
-          'fill="' + CHART_FILL + '" fill-opacity="' + (1 - i * 0.16).toFixed(2) + '" ' +
+          'fill="' + fill + '" fill-opacity="' + (1 - i * 0.16).toFixed(2) + '" ' +
           'stroke="' + CHART_INK + '" stroke-width="0.4"/>';
         a0 = a1;
       });
       return body;
     }
 
+    if (o.grid) {
+      for (let g = 1; g <= 4; g++) {
+        const y = (H - PAD) - (g / 4) * RISE;
+        body += '<line x1="' + PAD + '" y1="' + y.toFixed(2) + '" x2="' + (W - PAD) + '" y2="' + y.toFixed(2) +
+          '" stroke="' + CHART_INK + '" stroke-width="0.25" stroke-opacity="0.25" vector-effect="non-scaling-stroke"/>';
+      }
+    }
+
     const step = (W - PAD * 2) / series.length;
     if (type === 'line') {
-      const pts = series.map(function (d, i) {
-        const x = PAD + step * (i + 0.5);
-        const y = H - PAD - (d.value / max) * (H - PAD * 3);
-        return x.toFixed(2) + ',' + y.toFixed(2);
-      }).join(' ');
-      body += '<polyline points="' + pts + '" fill="none" stroke="' + CHART_FILL +
-        '" stroke-width="1.6" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>';
-      series.forEach(function (d, i) {
-        const x = PAD + step * (i + 0.5);
-        const y = H - PAD - (d.value / max) * (H - PAD * 3);
-        body += '<circle cx="' + x.toFixed(2) + '" cy="' + y.toFixed(2) + '" r="1.4" fill="' + CHART_FILL + '"/>';
-      });
+      for (let si = 0; si < n; si++) {
+        const pts = series.map(function (d, i) {
+          const raw = (d.values || [d.value])[si];
+          const v = raw === undefined ? 0 : raw;
+          const x = PAD + step * (i + 0.5);
+          const y = H - PAD - (v / max) * RISE;
+          return x.toFixed(2) + ',' + y.toFixed(2);
+        }).join(' ');
+        body += '<polyline points="' + pts + '" fill="none" stroke="' + fill +
+          '" stroke-opacity="' + tint(si) + '" stroke-width="1.6" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>';
+        series.forEach(function (d, i) {
+          const v = (d.values || [d.value])[si];
+          if (v === undefined) return;
+          const x = PAD + step * (i + 0.5);
+          const y = H - PAD - (v / max) * RISE;
+          body += '<circle cx="' + x.toFixed(2) + '" cy="' + y.toFixed(2) + '" r="1.4" fill="' +
+            fill + '" fill-opacity="' + tint(si) + '"/>';
+        });
+      }
     } else {
       series.forEach(function (d, i) {
-        const bw = step * 0.62;
-        const x = PAD + step * i + (step - bw) / 2;
-        const h = (d.value / max) * (H - PAD * 3);
-        body += '<rect x="' + x.toFixed(2) + '" y="' + (H - PAD - h).toFixed(2) +
-          '" width="' + bw.toFixed(2) + '" height="' + Math.max(h, 0.4).toFixed(2) +
-          '" fill="' + CHART_FILL + '" fill-opacity="' + (1 - i * 0.1).toFixed(2) + '"/>';
+        const vals = d.values || [d.value];
+        const group = step * 0.72;
+        const bw = group / n;
+        const x0 = PAD + step * i + (step - group) / 2;
+        for (let si = 0; si < n; si++) {
+          const v = vals[si];
+          if (v === undefined) continue;
+          const h = (v / max) * RISE;
+          body += '<rect x="' + (x0 + bw * si).toFixed(2) + '" y="' + (H - PAD - h).toFixed(2) +
+            '" width="' + (bw * 0.88).toFixed(2) + '" height="' + Math.max(h, 0.4).toFixed(2) +
+            '" fill="' + fill + '" fill-opacity="' + tint(si) + '"/>';
+        }
       });
     }
 
     body += '<line x1="' + PAD + '" y1="' + (H - PAD) + '" x2="' + (W - PAD) + '" y2="' + (H - PAD) +
       '" stroke="' + CHART_INK + '" stroke-width="0.4" vector-effect="non-scaling-stroke"/>';
-    series.forEach(function (d, i) {
-      const x = PAD + step * (i + 0.5);
-      body += '<text x="' + x.toFixed(2) + '" y="' + (H + 4) + '" text-anchor="middle" ' +
-        'font-size="4" fill="' + CHART_INK + '" font-family="var(--font-body)">' +
-        String(d.label).replace(/[<&]/g, '') + '</text>';
-    });
     return body;
   }
 
+  /* The words: category labels along the bottom, the number on each column or
+   * point, and a key for the series. Percent positions mirror the geometry the
+   * SVG just drew. */
+  function renderChartText(type, series, opts) {
+    const o = opts || {};
+    if (!series.length) return '';
+    const W = 100, H = 62, PAD = 2;
+    const n = seriesCount(series);
+    const all = series.reduce(function (a, d) { return a.concat(d.values || [d.value]); }, []);
+    const max = Math.max.apply(null, all).valueOf() || 1;
+    const esc = function (t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
+    const TOP = o.legend ? 11 : 0;
+    const RISE = H - PAD * 3 - TOP;
+    let out = '';
+
+    if (type === 'pie') {
+      if (!o.labels) return '';
+      series.forEach(function (d, i) {
+        out += '<span class="chart-key"><i style="opacity:' + (1 - i * 0.16).toFixed(2) +
+          '"></i>' + esc(d.label) + '</span>';
+      });
+      return '<div class="chart-legend">' + out + '</div>';
+    }
+
+    const step = (W - PAD * 2) / series.length;
+    series.forEach(function (d, i) {
+      const cx = PAD + step * (i + 0.5);
+      if (o.labels) {
+        out += '<span class="chart-cat" style="left:' + cx.toFixed(2) + '%;">' + esc(d.label) + '</span>';
+      }
+      if (o.values) {
+        (d.values || [d.value]).forEach(function (v, si) {
+          const y = (H - PAD - (v / max) * RISE) / H * 100;
+          const off = n === 1 ? 0 : (si - (n - 1) / 2) * (step * 0.72 / n);
+          out += '<span class="chart-val" style="left:' + (cx + off).toFixed(2) +
+            '%;top:' + Math.max(0, y - 9).toFixed(2) + '%;">' + esc(v) + '</span>';
+        });
+      }
+    });
+
+    if (o.legend) {
+      const names = (o.names || '').split(',').map(function (x) { return x.trim(); });
+      let keys = '';
+      for (let si = 0; si < n; si++) {
+        keys += '<span class="chart-key"><i style="opacity:' + (1 - si * 0.22).toFixed(2) +
+          '"></i>' + esc(names[si] || 'Series ' + (si + 1)) + '</span>';
+      }
+      out += '<div class="chart-legend">' + keys + '</div>';
+    }
+    return out;
+  }
+
+  function chartOpts(obj) {
+    return {
+      labels: obj.hasAttribute('data-chart-labels'),
+      values: obj.hasAttribute('data-chart-values'),
+      legend: obj.hasAttribute('data-chart-legend'),
+      grid: obj.hasAttribute('data-chart-grid'),
+      names: obj.getAttribute('data-chart-names') || '',
+      colour: obj.getAttribute('data-chart-colour') || ''
+    };
+  }
+
   function paintChart(obj) {
-    const svg = obj.querySelector('.slide-object-chart svg');
+    const host = obj.querySelector('.slide-object-chart');
+    const svg = host && host.querySelector('svg');
     if (!svg) return;
+    if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
     const type = obj.getAttribute('data-chart') || 'bar';
     const series = parseSeries(obj.getAttribute('data-chart-data'));
-    svg.innerHTML = renderChart(type, series);
+    const o = chartOpts(obj);
+    svg.innerHTML = renderChart(type, series, o);
+    let words = host.querySelector('.chart-words');
+    if (!words) {
+      words = document.createElement('div');
+      words.className = 'chart-words';
+      words.setAttribute('contenteditable', 'false');
+      host.appendChild(words);
+    }
+    words.innerHTML = renderChartText(type, series, o);
   }
 
   function chartMarkup() {
-    return '<div class="slide-object-chart" style="width:100%;height:100%;pointer-events:none;">' +
+    return '<div class="slide-object-chart" style="width:100%;height:100%;pointer-events:none;position:relative;">' +
       '<svg viewBox="0 0 100 70" preserveAspectRatio="none" width="100%" height="100%" ' +
       'style="display:block;overflow:visible;"></svg></div>';
   }
@@ -1861,6 +2008,10 @@
     if (!obj) return null;
     obj.setAttribute('data-chart', 'bar');
     obj.setAttribute('data-chart-data', 'Q1 12, Q2 18, Q3 9, Q4 22');
+    /* A chart with no labels is barely a chart, so a new one arrives with the
+     * words already on. */
+    obj.setAttribute('data-chart-labels', '');
+    obj.setAttribute('data-chart-values', '');
     ensureObjectControls(obj.parentNode);
     paintChart(obj);
     return obj;
@@ -2401,6 +2552,29 @@
   // "embed short, link long" rule does, rather than after the file is huge.
   const MEDIA_INLINE_WARN = 8 * 1024 * 1024;
 
+  /* A clip can also be linked rather than carried. Embedding keeps a deck one
+   * file, which is the point of this thing, but it costs roughly 4/3 the size
+   * of the clip — so a long video is better hosted and pointed at, and the
+   * deck stays small. Bento splits the Media button the same way. */
+  (function () {
+    document.querySelectorAll('[data-insert="media-link"]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (!editor.active) return;
+        const kind = btn.getAttribute('data-media-kind') || 'video';
+        const url = (window.prompt(kind === 'audio'
+          ? 'Address of the audio to play'
+          : 'Address of the video to play') || '').trim();
+        if (!url) return;
+        const obj = insertObject('media', mediaMarkup(kind, url),
+          kind === 'audio' ? { left: 20, top: 78, width: 60, height: 8 } : null);
+        if (obj) {
+          obj.setAttribute('data-media', kind);
+          obj.setAttribute('data-media-linked', '');
+        }
+      });
+    });
+  })();
+
   function mediaMarkup(kind, src) {
     const common = 'width:100%;height:100%;display:block;pointer-events:none;';
     return '<div class="slide-object-media" style="width:100%;height:100%;">' +
@@ -2756,26 +2930,58 @@
   /* Grid, padding and header are re-derived from the table's own attributes
    * rather than remembered per cell, so undo only has to restore a word and
    * the cells follow. */
+  /* Every part of a table's look is an attribute on the table itself, and the
+   * cells are repainted from those. Undo therefore only has to put one word
+   * back, and a table pasted from elsewhere adopts the look the moment it is
+   * given one. */
+  const TABLE_PRESETS = {
+    boxed:   { grid: 'all',  stripe: false },
+    lines:   { grid: 'rows', stripe: false },
+    striped: { grid: 'rows', stripe: true },
+    plain:   { grid: 'none', stripe: false }
+  };
+
   function paintTable(tbl) {
     if (!tbl) return;
-    const lines = tbl.getAttribute('data-grid') || 'all';
-    const px = tbl.getAttribute('data-pad-x');
-    const py = tbl.getAttribute('data-pad-y');
+    const at = function (n) { return tbl.getAttribute(n); };
+    const preset = TABLE_PRESETS[at('data-preset')] || null;
+    const lines = at('data-grid') || (preset ? preset.grid : 'all');
+    const stripe = preset ? preset.stripe : false;
+    const lineCol = at('data-line') || 'var(--deck-chrome-border, currentColor)';
+    const headFill = at('data-head-fill');
+    const headText = at('data-head-text');
+    const textCol = at('data-text');
+    const px = at('data-pad-x');
+    const py = at('data-pad-y');
+    const font = at('data-font');
+    const radius = at('data-radius');
     const head = tbl.hasAttribute('data-head');
-    const rows = Array.prototype.slice.call(tbl.rows || []);
-    rows.forEach(function (tr, ri) {
+
+    /* A radius on a table with collapsed borders does nothing — the cells
+     * paint over the corners — so the wrapper has to clip. */
+    tbl.style.borderRadius = radius ? radius + 'px' : '';
+    const wrap = tbl.parentElement;
+    if (wrap && wrap.classList.contains('slide-object-table')) {
+      wrap.style.borderRadius = radius ? radius + 'px' : '';
+      wrap.style.overflow = 'hidden';
+    }
+    if (font) tbl.style.fontSize = font + 'px';
+
+    Array.prototype.slice.call(tbl.rows || []).forEach(function (tr, ri) {
+      const isHead = head && ri === 0;
       Array.prototype.slice.call(tr.cells).forEach(function (cell) {
-        if (lines === 'none') cell.style.border = 'none';
+        if (lines === 'none') { cell.style.border = '0 none'; }
         else if (lines === 'rows') {
-          cell.style.border = 'none';
-          cell.style.borderBottom = '1px solid var(--deck-chrome-border, currentColor)';
+          cell.style.border = '0 none';
+          cell.style.borderBottom = '1px solid ' + lineCol;
         } else {
-          cell.style.border = '1px solid var(--deck-chrome-border, currentColor)';
+          cell.style.border = '1px solid ' + lineCol;
         }
-        if (px !== null || py !== null) {
-          cell.style.padding = (py === null ? '0.35' : py) + 'em ' + (px === null ? '0.6' : px) + 'em';
-        }
-        cell.style.fontWeight = (head && ri === 0) ? '700' : (ri === 0 && !head ? '400' : cell.style.fontWeight);
+        cell.style.padding = (py === null ? '0.35' : py) + 'em ' + (px === null ? '0.6' : px) + 'em';
+        cell.style.fontWeight = isHead ? '700' : '400';
+        cell.style.background = isHead && headFill ? headFill
+          : (stripe && !isHead && ri % 2 === 0 ? 'rgba(127,127,127,0.09)' : '');
+        cell.style.color = isHead && headText ? headText : (textCol || '');
       });
     });
   }
@@ -2824,11 +3030,61 @@
       if (el) { setStyle(el, 'lineHeight', ''); syncInspector(); }
       return;
     }
-    if (t.closest('[data-table-header]')) {
-      const tbl = tableEl(obj);
-      if (tbl) { tableSet(obj, 'data-head', tbl.hasAttribute('data-head') ? null : ''); syncInspector(); }
+    const clr = t.closest('[data-table-clear]');
+    if (clr) {
+      tableSet(obj, 'data-' + clr.getAttribute('data-table-clear'), null);
+      syncInspector();
+      return;
     }
+    if (t.closest('[data-table-to-chart]')) tableToChart(obj);
   });
+
+  /* The checkbox is its own listener: a change on an input never reaches the
+   * click handler in a state worth reading. */
+  document.addEventListener('change', function (e) {
+    const t = e.target;
+    if (!t.closest || !t.closest('[data-table-header]')) return;
+    const obj = selectedObject();
+    const tbl = tableEl(obj);
+    if (tbl) { tableSet(obj, 'data-head', t.checked ? '' : null); syncInspector(); }
+  });
+
+  /* A table already holds the numbers, so charting it should not mean typing
+   * them again. The first column becomes the labels, the rest the values. */
+  function tableToChart(obj) {
+    const tbl = tableEl(obj);
+    if (!tbl) return;
+    const rows = Array.prototype.slice.call(tbl.rows || []);
+    const skipHead = tbl.hasAttribute('data-head') ? 1 : 0;
+    const pairs = [];
+    rows.slice(skipHead).forEach(function (tr) {
+      const cells = Array.prototype.slice.call(tr.cells).map(function (c) { return c.textContent.trim(); });
+      if (!cells.length) return;
+      const label = cells[0];
+      const num = cells.slice(1).map(parseFloat).filter(function (n) { return !isNaN(n); });
+      if (label && num.length) pairs.push(label.replace(/,/g, ' ') + ' ' + num.join(' '));
+    });
+    if (!pairs.length) {
+      window.alert('No numbers found — a chart needs a label column and at least one column of numbers.');
+      return;
+    }
+    const chart = insertChart();
+    if (!chart) return;
+    chart.setAttribute('data-chart-data', pairs.join(', '));
+    /* Land it beside the table it came from rather than in the default spot,
+     * so the two can be compared without a drag first. */
+    const box = obj.getBoundingClientRect();
+    const slide = obj.closest('section.slide');
+    if (slide) {
+      const sb = slide.getBoundingClientRect();
+      chart.style.left = (((box.left - sb.left) / sb.width) * 100) + '%';
+      chart.style.top = Math.min(92, ((box.top - sb.top) / sb.height) * 100 + 4) + '%';
+      chart.style.width = ((box.width / sb.width) * 100) + '%';
+      chart.style.height = ((box.height / sb.height) * 100) + '%';
+    }
+    paintChart(chart);
+    syncInspector();
+  }
 
   document.addEventListener('input', function (e) {
     const t = e.target;
@@ -2840,6 +3096,15 @@
       if (el) setStyle(el, 'lineHeight', t.value);
     } else if (t.closest('[data-table-pad-x]')) tableSet(obj, 'data-pad-x', t.value);
     else if (t.closest('[data-table-pad-y]')) tableSet(obj, 'data-pad-y', t.value);
+    else if (t.closest('[data-table-font]')) tableSet(obj, 'data-font', t.value);
+    else if (t.closest('[data-table-radius]')) tableSet(obj, 'data-radius', t.value);
+    /* Colour inputs report on input while the picker is dragged and only on
+     * change when it closes. Listening for change alone meant the table did
+     * not follow the colour you were choosing. */
+    else if (t.closest('[data-table-head-fill]')) tableSet(obj, 'data-head-fill', t.value);
+    else if (t.closest('[data-table-head-text]')) tableSet(obj, 'data-head-text', t.value);
+    else if (t.closest('[data-table-text]')) tableSet(obj, 'data-text', t.value);
+    else if (t.closest('[data-table-line]')) tableSet(obj, 'data-line', t.value);
   });
 
   document.addEventListener('change', function (e) {
@@ -2850,7 +3115,16 @@
     if (t.closest('[data-text-weight]')) {
       const el = textEl(obj);
       if (el) setStyle(el, 'fontWeight', t.value);
-    } else if (t.closest('[data-table-lines]')) tableSet(obj, 'data-grid', t.value);
+    }
+    else if (t.closest('[data-table-lines]')) tableSet(obj, 'data-grid', t.value);
+    else if (t.closest('[data-table-preset]')) {
+      /* Picking a preset clears a one-off grid choice, or the preset would
+       * appear not to take. */
+      const tbl = tableEl(obj);
+      if (tbl) tbl.removeAttribute('data-grid');
+      tableSet(obj, 'data-preset', t.value);
+      syncInspector();
+    }
   });
 
 
@@ -3001,6 +3275,40 @@
     else window.open(to, '_blank', 'noopener');
   });
 
+  /* Chart options are attributes, repainted from, so undo restores a word. */
+  function chartSet(obj, attr, value) {
+    const before = obj.hasAttribute(attr) ? (obj.getAttribute(attr) || '') : null;
+    pushAttr(function (v) {
+      if (v === null) obj.removeAttribute(attr);
+      else obj.setAttribute(attr, v);
+      paintChart(obj);
+    }, before, value);
+  }
+
+  document.addEventListener('click', function (e) {
+    const t = e.target;
+    if (!t.closest) return;
+    const obj = selectedObject();
+    if (!obj || obj.getAttribute('data-object-type') !== 'chart') return;
+    const flag = t.closest('[data-chart-flag]');
+    if (flag) {
+      const attr = 'data-chart-' + flag.getAttribute('data-chart-flag');
+      chartSet(obj, attr, obj.hasAttribute(attr) ? null : '');
+      syncInspector();
+      return;
+    }
+    if (t.closest('[data-chart-colour-reset]')) { chartSet(obj, 'data-chart-colour', null); syncInspector(); }
+  });
+
+  document.addEventListener('input', function (e) {
+    const t = e.target;
+    if (!t.closest) return;
+    const obj = selectedObject();
+    if (!obj || obj.getAttribute('data-object-type') !== 'chart') return;
+    if (t.closest('[data-chart-names]')) chartSet(obj, 'data-chart-names', t.value);
+    else if (t.closest('[data-chart-colour]')) chartSet(obj, 'data-chart-colour', t.value);
+  });
+
   function syncInspector() {
     const obj = selectedObject();
     const type = obj ? obj.getAttribute('data-object-type') : null;
@@ -3066,6 +3374,17 @@
         document.querySelectorAll('[data-chart-type]').forEach(function (b) {
           b.classList.toggle('active', b.getAttribute('data-chart-type') === obj.getAttribute('data-chart'));
         });
+        document.querySelectorAll('[data-chart-flag]').forEach(function (b) {
+          b.classList.toggle('active', obj.hasAttribute('data-chart-' + b.getAttribute('data-chart-flag')));
+        });
+        const nm = document.querySelector('[data-chart-names]');
+        if (nm && document.activeElement !== nm) nm.value = obj.getAttribute('data-chart-names') || '';
+        const cc = document.querySelector('[data-chart-colour]');
+        if (cc && document.activeElement !== cc) {
+          cc.value = obj.getAttribute('data-chart-colour') ||
+            hexOf(obj.querySelector('.slide-object-chart svg rect, .slide-object-chart svg path, .slide-object-chart svg polyline'), 'fill') ||
+            '#000000';
+        }
       }
       if (type === 'shape') {
         const svg = shapeSvg(obj);
@@ -3115,13 +3434,45 @@
       if (type === 'table') {
         const tbl = tableEl(obj);
         const hd = document.querySelector('[data-table-header]');
-        if (hd) hd.classList.toggle('active', !!tbl && tbl.hasAttribute('data-head'));
+        if (hd && document.activeElement !== hd) hd.checked = !!tbl && tbl.hasAttribute('data-head');
+        const cols = document.querySelector('[data-table-cols]');
+        const rws = document.querySelector('[data-table-rows]');
+        if (tbl && cols) cols.textContent = tbl.rows[0] ? tbl.rows[0].cells.length : 0;
+        if (tbl && rws) rws.textContent = tbl.rows.length;
+        const num = function (sel, attr, dflt) {
+          const el = document.querySelector(sel);
+          if (el && tbl && document.activeElement !== el) {
+            const v = tbl.getAttribute(attr);
+            el.value = v === null ? dflt : v;
+          }
+        };
+        num('[data-table-pad-x]', 'data-pad-x', 0.6);
+        num('[data-table-pad-y]', 'data-pad-y', 0.35);
+        num('[data-table-radius]', 'data-radius', 0);
+        const fs = document.querySelector('[data-table-font]');
+        if (fs && tbl && document.activeElement !== fs) {
+          fs.value = tbl.getAttribute('data-font') || Math.round(parseFloat(getComputedStyle(tbl).fontSize) || 0);
+        }
+        const ps = document.querySelector('[data-table-preset]');
+        if (ps && tbl && document.activeElement !== ps) ps.value = tbl.getAttribute('data-preset') || 'boxed';
         const gl = document.querySelector('[data-table-lines]');
-        if (gl && tbl && document.activeElement !== gl) gl.value = tbl.getAttribute('data-grid') || 'all';
-        const pxi = document.querySelector('[data-table-pad-x]');
-        if (pxi && tbl && document.activeElement !== pxi) pxi.value = tbl.getAttribute('data-pad-x') || 0.6;
-        const pyi = document.querySelector('[data-table-pad-y]');
-        if (pyi && tbl && document.activeElement !== pyi) pyi.value = tbl.getAttribute('data-pad-y') || 0.35;
+        if (gl && tbl && document.activeElement !== gl) {
+          const preset = TABLE_PRESETS[tbl.getAttribute('data-preset')];
+          gl.value = tbl.getAttribute('data-grid') || (preset ? preset.grid : 'all');
+        }
+        /* A colour input cannot hold "unset", so it shows what is drawn and
+         * Clear is the way back to the design's own. */
+        const cell = tbl && tbl.querySelector('th, td');
+        const headCell = tbl && tbl.rows[0] && tbl.rows[0].cells[0];
+        const col = function (sel, attr, from, prop) {
+          const el = document.querySelector(sel);
+          if (!el || !tbl || document.activeElement === el) return;
+          el.value = tbl.getAttribute(attr) || hexOf(from, prop) || '#000000';
+        };
+        col('[data-table-head-fill]', 'data-head-fill', headCell, 'backgroundColor');
+        col('[data-table-head-text]', 'data-head-text', headCell, 'color');
+        col('[data-table-text]', 'data-text', cell, 'color');
+        col('[data-table-line]', 'data-line', cell, 'borderBottomColor');
       }
       if (type === 'text') {
         const c = document.querySelector('[data-text-colour]');

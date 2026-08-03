@@ -1232,3 +1232,49 @@ body.deck-presenting .deck-btn-view-present { display: none; }
 }
 /* Spread is not an icon pair — let those two keep their words. */
 .deck-inspector .deck-field-row--icons button[data-distribute] { width: auto; padding: 0 8px; }
+
+/* Chart words. These sit over the SVG rather than in it: the SVG stretches to
+   the object box with preserveAspectRatio="none", which would squash any text
+   inside it along with the shapes. */
+.chart-words {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  font-family: var(--font-body, inherit);
+  color: var(--text-primary, currentColor);
+}
+.chart-words .chart-cat,
+.chart-words .chart-val {
+  position: absolute;
+  transform: translateX(-50%);
+  font-size: clamp(7px, 2.2cqw, 13px);
+  line-height: 1;
+  white-space: nowrap;
+}
+.chart-words .chart-cat { bottom: 2%; opacity: 0.75; }
+.chart-words .chart-val { font-variant-numeric: tabular-nums; opacity: 0.9; }
+.chart-words .chart-legend {
+  position: absolute; left: 0; right: 0; top: 0;
+  display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: center;
+  font-size: clamp(7px, 2.2cqw, 13px); line-height: 1;
+}
+.chart-words .chart-key { display: inline-flex; align-items: center; gap: 4px; opacity: 0.85; }
+.chart-words .chart-key i {
+  width: 9px; height: 9px; border-radius: 2px;
+  background: var(--deck-chrome-accent, currentColor);
+}
+/* Sized against the object rather than the viewport, so a small chart in a
+   corner does not shout and a full-width one stays readable. */
+.slide-object-chart { container-type: inline-size; }
+
+/* Stepper: minus, count, plus. */
+.deck-inspector .deck-stepper { align-items: center; gap: 6px; }
+.deck-inspector .deck-stepper button { width: 26px; height: 24px; padding: 0; }
+.deck-inspector .deck-stepper > span {
+  min-width: 2ch; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.deck-inspector .deck-field-hint {
+  margin: 6px 0 8px;
+  font-size: 0.68rem; line-height: 1.45;
+  opacity: 0.62;
+}
