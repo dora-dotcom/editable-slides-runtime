@@ -3837,6 +3837,23 @@
     syncInspector();
   }
 
+  /* Chrome's indent leaves the nested list as a sibling of the item it belongs
+   * to, directly inside the outer list. It renders, but a <ul> is not allowed
+   * there and the file is what gets sent to people, so put it where it goes. */
+  function tidyNestedLists(host) {
+    host.querySelectorAll('ul > ul, ul > ol, ol > ul, ol > ol').forEach(function (inner) {
+      let prev = inner.previousElementSibling;
+      while (prev && prev.tagName !== 'LI') prev = prev.previousElementSibling;
+      if (prev) prev.appendChild(inner);
+      else {
+        const li = document.createElement('li');
+        li.style.listStyle = 'none';
+        inner.parentNode.insertBefore(li, inner);
+        li.appendChild(inner);
+      }
+    });
+  }
+
   document.addEventListener('click', function (e) {
     const b = e.target.closest && e.target.closest('[data-block-list]');
     if (!b) return;
@@ -3845,18 +3862,25 @@
   });
 
   /* Tab moves an item in, Shift+Tab out — the one gesture everybody tries on a
-   * list. Without it Tab left the text entirely. */
+   * list. Without it Tab left the text entirely.
+   *
+   * The item has to come from the selection, not from the event's target: with
+   * a caret inside editable text the target is the editable element itself, so
+   * looking upward from it never reaches the <li> the caret is actually in. */
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Tab') return;
-    const t = e.target;
-    if (!t.closest) return;
-    const li = t.closest('.slide-object-text li');
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    let node = sel.getRangeAt(0).startContainer;
+    if (node && node.nodeType !== 1) node = node.parentElement;
+    const li = node && node.closest && node.closest('li');
     if (!li) return;
     const host = li.closest('.slide-object-text');
     if (!host || host.getAttribute('contenteditable') !== 'true') return;
     e.preventDefault();
     const before = host.innerHTML;
     document.execCommand(e.shiftKey ? 'outdent' : 'indent', false, null);
+    tidyNestedLists(host);
     const after = host.innerHTML;
     if (before !== after) {
       history.push({
