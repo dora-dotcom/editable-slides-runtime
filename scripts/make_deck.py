@@ -137,6 +137,41 @@ def tokens_from_markdown(text: str) -> dict:
     return out
 
 
+# The names real design systems actually use, mapped onto the ones the runtime
+# reads. Requiring a design to be renamed by hand before it can be used is at
+# odds with the whole point, and hand-translation is where mistakes happen: a
+# source naming --bg: #f9faf5 alongside a white --surface had its slides come
+# out white, because the fallback picks the lightest colour it saw and nobody
+# had told it which one was the paper.
+#
+# Order matters: the first name present wins, so the most specific comes first.
+ALIASES = {
+    '--slide-bg': ('--slide-bg', '--bg', '--background', '--page-bg', '--canvas', '--paper'),
+    '--text-primary': ('--text-primary', '--fg', '--foreground', '--t1', '--ink', '--text'),
+    '--text-secondary': ('--text-secondary', '--t2', '--text-muted', '--muted', '--t3'),
+    '--deck-chrome-accent': ('--deck-chrome-accent', '--accent', '--as', '--primary', '--brand'),
+    '--deck-chrome-border': ('--deck-chrome-border', '--line', '--border', '--b1', '--divider'),
+    '--deck-chrome-surface': ('--deck-chrome-surface', '--surface', '--bgcard', '--card'),
+    '--deck-chrome-muted': ('--deck-chrome-muted', '--t3', '--muted', '--text-muted'),
+    '--font-display': ('--font-display', '--font-serif', '--font-heading', '--font-sans'),
+    '--font-body': ('--font-body', '--font-sans', '--font-text'),
+    '--font-mono': ('--font-mono', '--font-code'),
+}
+
+
+def apply_aliases(found: dict) -> dict:
+    """Fill the names the runtime reads from the names the source used."""
+    out = dict(found)
+    for want, names in ALIASES.items():
+        if out.get(want):
+            continue
+        for name in names:
+            if found.get(name):
+                out[want] = found[name]
+                break
+    return out
+
+
 def load_tokens(path: Path | None) -> tuple[dict, str]:
     tokens = dict(DEFAULTS)
     if path is None:
@@ -149,8 +184,10 @@ def load_tokens(path: Path | None) -> tuple[dict, str]:
         found = tokens_from_css(text)
     else:
         found = tokens_from_markdown(text)
+    named = len([v for v in found.values() if v])
+    found = apply_aliases(found)
     tokens.update({k: v for k, v in found.items() if v})
-    return tokens, f'{len(found)} from {path.name}'
+    return tokens, f'{named} from {path.name}'
 
 
 # --------------------------------------------------------------------------

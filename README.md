@@ -36,8 +36,11 @@ python3 scripts/make_deck.py --content outline.md --design brand.md --output dec
 ```
 
 `--design` takes a tokens `.json`, a `.css` with a `:root` block, or a
-`design.md` that just names its colours and fonts in prose. Leave it out and
-the deck still works — every token the runtime reads has a fallback.
+`design.md` that just names its colours and fonts in prose. It reads the names
+real design systems use — `--bg`, `--fg`, `--accent`, `--as`, `--t1`, `--line`
+— so a token file can be copied out of a codebase and used as it is, with no
+renaming. Leave `--design` out and the deck still works: every token the
+runtime reads has a fallback.
 
 Port an existing deck instead:
 
