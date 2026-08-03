@@ -1305,3 +1305,20 @@ body.deck-presenting .deck-btn-view-present { display: none; }
   font-size: 0.68rem; line-height: 1.45;
   opacity: 0.62;
 }
+
+/* The floating bar carries a face picker and a colour now, so its controls
+   need the same footing as its buttons. */
+.rte-toolbar select[data-rte-font] {
+  max-width: 130px;
+  font: inherit; font-size: 0.78rem;
+  padding: 2px 4px;
+  border: 1px solid var(--ui-line, rgba(0,0,0,0.14));
+  border-radius: 6px;
+  background: var(--ui-surface, #fff);
+  color: inherit;
+}
+.rte-toolbar input[type="color"][data-rte-colour] {
+  width: 26px; height: 22px; padding: 0;
+  border: 1px solid var(--ui-line, rgba(0,0,0,0.14));
+  border-radius: 6px; background: none; cursor: pointer;
+}

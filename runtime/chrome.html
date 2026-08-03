@@ -543,15 +543,18 @@
 
 <div class="rte-toolbar" id="rteToolbar" role="toolbar" aria-label="Text format" data-deck-chrome-surface="">
   <span class="rte-toolbar-group"><button type="button" data-cmd="bold"><strong>B</strong></button>
-  <button type="button" data-cmd="italic"><em>I</em></button></span>
+  <button type="button" data-cmd="italic"><em>I</em></button>
+  <button type="button" data-cmd="underline"><u>U</u></button></span>
   <span class="rte-toolbar-group" aria-label="Font family">
-    <span class="rte-toolbar-meta">Font</span>
-    <button type="button" data-font="var(--font-body)">Body</button>
-    <button type="button" data-font="var(--font-display)">Display</button>
+    <select data-rte-font aria-label="Font"><option value="">Inherit</option></select>
   </span>
   <span class="rte-toolbar-group" aria-label="Font size">
-    <button type="button" data-size-step="-1" title="Smaller (1px)">A−</button>
-    <button type="button" data-size-step="1" title="Larger (1px)">A+</button>
+    <button type="button" data-size-step="-1" title="Smaller">A&minus;</button>
+    <button type="button" data-size-step="1" title="Larger">A+</button>
+  </span>
+  <span class="rte-toolbar-group" aria-label="Colour">
+    <input type="color" data-rte-colour aria-label="Text colour">
+    <button type="button" data-rte-colour-reset title="Back to the design's own">&#8635;</button>
   </span>
   <span class="rte-toolbar-group" aria-label="Insert field">
     <span class="rte-toolbar-meta">Field</span>

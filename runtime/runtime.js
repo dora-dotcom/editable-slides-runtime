@@ -638,14 +638,33 @@
     }
 
     _syncRteButtons() {
-      const boldBtn = this.toolbar.querySelector('button[data-cmd="bold"]');
-      try {
-        if (boldBtn) boldBtn.classList.toggle('is-active', document.queryCommandState('bold'));
-      } catch (_) {}
-      const italicBtn = this.toolbar.querySelector('button[data-cmd="italic"]');
-      try {
-        if (italicBtn) italicBtn.classList.toggle('is-active', document.queryCommandState('italic'));
-      } catch (_) {}
+      ['bold', 'italic', 'underline'].forEach((cmd) => {
+        const b = this.toolbar.querySelector('button[data-cmd="' + cmd + '"]');
+        if (!b) return;
+        try { b.classList.toggle('is-active', document.queryCommandState(cmd)); } catch (_) {}
+      });
+      /* Face and colour read back from where the selection actually starts,
+       * so the bar describes the words under it rather than the box. */
+      const sel = document.getSelection();
+      const at = sel && sel.rangeCount
+        ? (sel.getRangeAt(0).startContainer.parentElement || this._activeTextEl())
+        : this._activeTextEl();
+      if (!at) return;
+      const swatch = this.toolbar.querySelector('[data-rte-colour]');
+      if (swatch && document.activeElement !== swatch) {
+        const m = getComputedStyle(at).color.match(/\d+/g);
+        if (m) {
+          swatch.value = '#' + m.slice(0, 3).map(function (n) {
+            return ('0' + parseInt(n, 10).toString(16)).slice(-2);
+          }).join('');
+        }
+      }
+      const face = this.toolbar.querySelector('[data-rte-font]');
+      if (face && document.activeElement !== face) {
+        const inline = ((at.style && at.style.fontFamily) || '').trim();
+        const known = Array.prototype.some.call(face.options, function (o) { return o.value === inline; });
+        face.value = known ? inline : '';
+      }
     }
 
     _activeTextEl() {
@@ -753,15 +772,37 @@
           const step = parseInt(btn.getAttribute('data-size-step'), 10);
           const textEl = this._activeTextEl();
           if (!textEl) return;
-          const beforeStyle = textEl.style.fontSize;
-          const cur = parseFloat(getComputedStyle(textEl).fontSize) || 16;
-          textEl.style.fontSize = Math.max(8, cur + step) + 'px';
-          const afterStyle = textEl.style.fontSize;
-          if (beforeStyle !== afterStyle) {
-            this.history.push({
-              undo: () => { textEl.style.fontSize = beforeStyle; },
-              redo: () => { textEl.style.fontSize = afterStyle; }
-            });
+          /* This bar is about the selection, so the step is too. Measuring
+           * from where the selection starts rather than from the block keeps
+           * A+ growing what you can see growing. */
+          const sel = window.getSelection();
+          const live = sel && sel.rangeCount && !sel.getRangeAt(0).collapsed &&
+            textEl.contains(sel.getRangeAt(0).commonAncestorContainer);
+          const from = live
+            ? (sel.getRangeAt(0).startContainer.parentElement || textEl)
+            : textEl;
+          const cur = parseFloat(getComputedStyle(from).fontSize) || 16;
+          const next = Math.max(8, cur + step) + 'px';
+          if (live) {
+            const beforeHtml = textEl.innerHTML;
+            this._applyInlineStyle(textEl, { fontSize: next });
+            const afterHtml = textEl.innerHTML;
+            if (beforeHtml !== afterHtml) {
+              this.history.push({
+                undo: () => { textEl.innerHTML = beforeHtml; },
+                redo: () => { textEl.innerHTML = afterHtml; }
+              });
+            }
+          } else {
+            const beforeStyle = textEl.style.fontSize;
+            textEl.style.fontSize = next;
+            const afterStyle = textEl.style.fontSize;
+            if (beforeStyle !== afterStyle) {
+              this.history.push({
+                undo: () => { textEl.style.fontSize = beforeStyle; },
+                redo: () => { textEl.style.fontSize = afterStyle; }
+              });
+            }
           }
           this._updateRteToolbar();
         });
@@ -2785,8 +2826,8 @@
     return seen.map(function (n) { return { label: n, value: '"' + n + '"' }; });
   }
 
-  function paintFontList() {
-    const sel = document.querySelector('[data-text-font]');
+  function paintFontList(target) {
+    const sel = target || document.querySelector('[data-text-font]');
     if (!sel) return;
     const keep = sel.value;
     sel.innerHTML = '';
@@ -2809,6 +2850,7 @@
     sel.value = keep;
   }
   paintFontList();
+  paintFontList(document.querySelector('[data-rte-font]'));
 
   /* A font file goes into the document the way an image does — base64, so the
    * deck stays one file and the face travels with it to whoever opens it. */
@@ -2847,14 +2889,14 @@
     const sel = e.target.closest && e.target.closest('[data-text-font]');
     if (!sel) return;
     const obj = selectedObject();
-    if (obj) styleText(obj, { fontFamily: sel.value });
+    if (obj) styleText(obj, { fontFamily: sel.value }, 'block');
   });
   document.addEventListener('input', function (e) {
     const f = e.target.closest && e.target.closest('[data-text-size]');
     if (!f) return;
     const obj = selectedObject();
     const v = parseFloat(f.value);
-    if (obj && !isNaN(v)) styleText(obj, { fontSize: v + 'px' });
+    if (obj && !isNaN(v)) styleText(obj, { fontSize: v + 'px' }, 'block');
   });
 
 
@@ -3191,7 +3233,7 @@
     const obj = selectedObject();
     if (!obj) return;
     if (t.closest('[data-text-weight]')) {
-      styleText(obj, { fontWeight: t.value });
+      styleText(obj, { fontWeight: t.value }, 'block');
     }
     else if (t.closest('[data-table-lines]')) tableSet(obj, 'data-grid', t.value);
     else if (t.closest('[data-table-preset]')) {
@@ -3440,13 +3482,21 @@
     return span;
   }
 
-  /* One entry point for every typographic control: part of the text if part of
-   * it is selected, the whole object otherwise. Undo restores the element's
-   * markup either way, so a wrap and a whole-block change step back alike. */
-  function styleText(obj, css) {
+  /* Two places can change type, and they mean different things.
+   *
+   * The bar that floats over a selection is about the words you highlighted —
+   * it is right there, and it is the precise instrument. The panel on the
+   * right is about the block: it follows what is selected on the slide and
+   * describes the whole of it. Keeping the two apart is what makes either
+   * predictable; a panel that sometimes hit three words and sometimes the
+   * paragraph would be neither.
+   *
+   * Undo restores the element's markup either way, so a wrap and a whole-block
+   * change step back alike. */
+  function styleText(obj, css, scope) {
     const el = textEl(obj);
     if (!el) return;
-    const range = liveTextRange(obj);
+    const range = scope === 'block' ? null : liveTextRange(obj);
     if (range) {
       const before = el.innerHTML;
       wrapRange(range, css);
@@ -3622,6 +3672,96 @@
       }
     }
   });
+
+
+  /* The bar over a selection: colour, face and size for the words you
+   * highlighted. Bold, italic and underline already worked on a selection;
+   * these three did not exist here, so the only way to reach them was the
+   * panel, which is about the block. */
+  (function () {
+    const bar = document.getElementById('rteToolbar');
+    if (!bar) return;
+
+    function target() {
+      const obj = selectedObject();
+      return obj && textEl(obj) ? obj : null;
+    }
+
+    const fontSel = bar.querySelector('[data-rte-font]');
+    if (fontSel) {
+      paintFontList(fontSel);
+      fontSel.addEventListener('change', function () {
+        const obj = target();
+        if (obj) styleText(obj, { fontFamily: fontSel.value }, 'selection');
+      });
+    }
+
+    const colour = bar.querySelector('[data-rte-colour]');
+    if (colour) {
+      colour.addEventListener('input', function () {
+        const obj = target();
+        if (obj) styleText(obj, { color: colour.value }, 'selection');
+      });
+    }
+    const reset = bar.querySelector('[data-rte-colour-reset]');
+    if (reset) {
+      reset.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      reset.addEventListener('click', function () {
+        const obj = target();
+        const el = obj && textEl(obj);
+        if (!el) return;
+        const range = liveTextRange(obj);
+        if (!range) { setStyle(el, 'color', ''); return; }
+        /* Putting the design's colour back over a few words means dropping
+         * the override, not painting another colour on top.
+         *
+         * The usual case is undoing a colour you just applied, and there the
+         * selection is exactly the span that carries it — so clear it there
+         * and the markup goes back to what it was, rather than gaining a
+         * second wrapper cancelling the first. */
+        const before = el.innerHTML;
+        const holder = range.commonAncestorContainer.nodeType === 1
+          ? range.commonAncestorContainer
+          : range.commonAncestorContainer.parentElement;
+        const exact = holder && holder !== el && el.contains(holder) &&
+          holder.style && holder.style.color &&
+          holder.textContent === range.toString() ? holder : null;
+        if (exact) {
+          exact.style.color = '';
+          if (!exact.getAttribute('style')) {
+            const parent = exact.parentNode;
+            while (exact.firstChild) parent.insertBefore(exact.firstChild, exact);
+            exact.remove();
+          }
+          const afterExact = el.innerHTML;
+          history.push({
+            undo: function () { el.innerHTML = before; lastTextRange = null; },
+            redo: function () { el.innerHTML = afterExact; lastTextRange = null; }
+          });
+          updateUndoRedoChrome();
+          return;
+        }
+        /* Otherwise dropping our own override is not always enough — reset
+         * inside a stretch that was already coloured leaves the words
+         * inheriting it — so anything still tinting them from above is
+         * answered by naming the paragraph's own colour. */
+        const span = wrapRange(range, {});
+        span.querySelectorAll('*').forEach(function (inner) {
+          if (inner.style) inner.style.color = '';
+        });
+        span.style.color = '';
+        const own = getComputedStyle(el).color;
+        if (getComputedStyle(span).color !== own) span.style.color = own;
+        if (!span.getAttribute('style')) span.removeAttribute('style');
+        const after = el.innerHTML;
+        history.push({
+          undo: function () { el.innerHTML = before; lastTextRange = null; },
+          redo: function () { el.innerHTML = after; lastTextRange = null; }
+        });
+        updateUndoRedoChrome();
+      });
+    }
+  })();
 
   function syncInspector() {
     const obj = selectedObject();
@@ -3930,30 +4070,14 @@
     const c = e.target.closest && e.target.closest('[data-text-colour]');
     if (!c) return;
     const obj = selectedObject();
-    if (obj) styleText(obj, { color: c.value });
+    if (obj) styleText(obj, { color: c.value }, 'block');
   });
   document.addEventListener('click', function (e) {
     if (!e.target.closest || !e.target.closest('[data-text-colour-reset]')) return;
     const obj = selectedObject();
     const t = textEl(obj);
     if (!t) return;
-    /* Reset means the design's own colour back, which for a part of a
-     * paragraph means taking the wrapper off rather than painting over it. */
-    const range = liveTextRange(obj);
-    if (range) {
-      const before = t.innerHTML;
-      const span = wrapRange(range, {});
-      span.style.color = '';
-      if (!span.getAttribute('style')) span.removeAttribute('style');
-      const after = t.innerHTML;
-      history.push({
-        undo: function () { t.innerHTML = before; lastTextRange = null; syncInspector(); },
-        redo: function () { t.innerHTML = after; lastTextRange = null; syncInspector(); }
-      });
-      updateUndoRedoChrome();
-    } else {
-      setStyle(t, 'color', '');
-    }
+    setStyle(t, 'color', '');
     syncInspector();
   });
 
