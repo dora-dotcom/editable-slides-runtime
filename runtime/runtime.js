@@ -220,19 +220,7 @@
     /* The table's own strip is gone: rows and columns are in the panel, with a
      * count beside them, and two places to do one thing is one too many. Any
      * strip a document arrived carrying is taken out here. */
-    el.querySelectorAll('.slide-object-tablectl').forEach((strip) => strip.remove());
-    el.querySelectorAll('[data-object-type="chart"]').forEach((obj) => {
-      if (obj.querySelector('.slide-object-chartctl')) return;
-      const data = obj.getAttribute('data-chart-data') || '';
-      obj.insertAdjacentHTML('beforeend',
-        '<div class="slide-object-chartctl" contenteditable="false">' +
-        '<button type="button" data-chart-type="bar">Bar</button>' +
-        '<button type="button" data-chart-type="line">Line</button>' +
-        '<button type="button" data-chart-type="pie">Pie</button>' +
-        '<span class="slide-object-chartdata" contenteditable="true" ' +
-        'title="Label value, label value…">' + data.replace(/[<&]/g, '') + '</span>' +
-        '</div>');
-    });
+    el.querySelectorAll('.slide-object-tablectl, .slide-object-chartctl').forEach((strip) => strip.remove());
   }
 
   /* ---------- Editor: select, drag, resize, snap, RTE ---------- */
@@ -1190,19 +1178,93 @@
     } catch (e) { console.warn(e); }
   }
 
-  /* Nobody should have to remember to save their own deck, so the runtime
-   * does it: every change schedules a write, and the write is coalesced so
-   * that holding a key down does not serialise the deck on each letter.
-   * Bento reached the same conclusion — it has no Save button either. */
+  /* Two different things are called saving here, and conflating them would be
+   * a lie in the interface.
+   *
+   * The browser copy is automatic: every change schedules a write, coalesced
+   * so that holding a key down does not serialise the deck on each letter. It
+   * survives a reload, and it never touches the file on disk.
+   *
+   * The file is what you send someone, and writing it is deliberate. Chrome
+   * treats a file:// document as a secure context, so the file can genuinely
+   * be written back in place rather than re-downloaded beside itself; where
+   * that is unavailable the export path takes over. This is the split Bento
+   * makes, and it is why it still has a Save button despite auto-saving. */
   let saveT = null;
-  let saveNoteT = null;
-  function noteSaved() {
+  let fileHandle = null;
+  let dirtySinceFile = false;
+  let lastAutoAt = null;
+  let lastFileAt = null;
+
+  function clockOf(d) {
+    return d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2);
+  }
+
+  function paintSaveNote() {
     const note = document.getElementById('deckSaveNote');
+    const btn = document.getElementById('btnSaveFile');
+    if (btn) btn.classList.toggle('is-dirty', dirtySinceFile || (!lastFileAt && !!lastAutoAt));
     if (!note) return;
-    note.textContent = 'Saved';
-    note.classList.add('is-on');
-    clearTimeout(saveNoteT);
-    saveNoteT = setTimeout(function () { note.classList.remove('is-on'); }, 1600);
+    if (lastFileAt && !dirtySinceFile) {
+      note.textContent = 'Saved to the file · ' + clockOf(lastFileAt);
+    } else if (lastFileAt) {
+      note.textContent = 'Unsaved changes · kept here ' + clockOf(lastAutoAt || lastFileAt);
+    } else if (lastAutoAt) {
+      note.textContent = 'Saved in this browser · ' + clockOf(lastAutoAt);
+    } else {
+      note.textContent = '';
+    }
+    note.classList.toggle('is-on', !!note.textContent);
+    note.classList.toggle('is-warn', !!lastFileAt && dirtySinceFile);
+  }
+
+  function noteSaved() {
+    lastAutoAt = new Date();
+    if (lastFileAt) dirtySinceFile = true;
+    paintSaveNote();
+  }
+
+  async function saveToFile() {
+    const html = '<!DOCTYPE html>\n' + (function () {
+      const clone = document.documentElement.cloneNode(true);
+      sanitizeExportDocument(clone);
+      clone.removeAttribute('data-deck-mode');
+      return clone.outerHTML;
+    })();
+    /* No way to write in place — hand over a copy instead of pretending. */
+    const copyInstead = function () {
+      exportHtml(false);
+      lastFileAt = new Date();
+      dirtySinceFile = false;
+      paintSaveNote();
+      const note = document.getElementById('deckSaveNote');
+      if (note) note.textContent = 'Saved a copy · ' + clockOf(lastFileAt);
+    };
+    if (typeof window.showSaveFilePicker !== 'function') { copyInstead(); return; }
+    try {
+      if (!fileHandle) {
+        const stem = (document.title || 'deck').replace(/\.html?$/i, '');
+        fileHandle = await window.showSaveFilePicker({
+          suggestedName: stem + '.html',
+          types: [{ description: 'Web page', accept: { 'text/html': ['.html'] } }]
+        });
+      }
+      const w = await fileHandle.createWritable();
+      await w.write(new Blob([html], { type: 'text/html;charset=utf-8' }));
+      await w.close();
+      lastFileAt = new Date();
+      dirtySinceFile = false;
+      paintSaveNote();
+    } catch (err) {
+      /* Cancelling the picker is a choice, not a failure. Anything else — the
+       * browser withholding permission, a read-only location — means writing
+       * in place is not available here, and the honest answer is a copy, not
+       * a dialog. An alert would also have frozen the page. */
+      if (err && err.name === 'AbortError') return;
+      console.warn(err);
+      fileHandle = null;
+      copyInstead();
+    }
   }
   function flushSave() {
     clearTimeout(saveT);
@@ -1210,6 +1272,11 @@
     saveState();
     noteSaved();
   }
+
+  (function () {
+    const btn = document.getElementById('btnSaveFile');
+    if (btn) btn.addEventListener('click', function () { flushSave(); saveToFile(); });
+  })();
   function scheduleSave() {
     if (!editor.active) return;
     clearTimeout(saveT);
@@ -1519,10 +1586,12 @@
       else enterEditMode();
     }
     if (editor.active && (e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
-      /* Saving is automatic, but the reflex is decades old and a browser
-       * "save page" dialog here would be worse than useless. */
+      /* The browser's own "save page" here would write a copy of the DOM
+       * without the runtime's cleanup, so this takes the key and does the
+       * thing the reflex means: put the changes in the file. */
       e.preventDefault();
       flushSave();
+      saveToFile();
     }
     if (editor.active && !ce && (e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
       e.preventDefault();
@@ -2023,8 +2092,11 @@
     if (!btn || !editor.active) return;
     e.preventDefault();
     e.stopPropagation();
-    const obj = btn.closest('[data-object-type="chart"]');
-    if (!obj) return;
+    /* The panel is where these live now, and a panel button is not inside the
+     * chart — resolving only upwards left Bar/Line/Pie dead once the strip on
+     * the object was removed. */
+    const obj = btn.closest('[data-object-type="chart"]') || selectedObject();
+    if (!obj || obj.getAttribute('data-object-type') !== 'chart') return;
     const before = obj.getAttribute('data-chart');
     const after = btn.getAttribute('data-chart-type');
     if (before === after) return;

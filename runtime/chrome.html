@@ -5,7 +5,8 @@
   <div class="deck-left-row deck-bar-lead">
     <span class="deck-title" id="deckTitle" contenteditable="false" spellcheck="false"
           role="textbox" aria-label="Deck title">Untitled deck</span>
-    <span class="deck-save-note deck-edit-only" id="deckSaveNote" role="status" aria-live="polite"></span>
+    <span class="deck-save-note deck-edit-only" id="deckSaveNote" role="status" aria-live="polite"
+          title="Changes are kept in this browser as you make them. Save writes them into the file itself."></span>
     <button type="button" class="edit-toggle" id="editToggle" title="Edit (E)">Edit</button>
     <button type="button" class="deck-btn-view-present" data-present="start" title="Present (P)">Present</button>
   </div>
@@ -70,6 +71,7 @@
         <button type="button" role="menuitem" id="btnExportPdf">PDF</button>
       </div>
     </div>
+    <button type="button" class="deck-btn-save deck-edit-only" id="btnSaveFile" title="Write these changes into the file (Ctrl/Cmd+S)">Save</button>
     <button type="button" class="deck-btn-present" data-present="start" title="Present (F5)">Present</button>
     <button type="button" class="deck-btn-done" id="btnDoneEdit">Done</button>
   </div>
@@ -355,7 +357,7 @@
         <div class="deck-field-row"><input type="text" data-chart-names placeholder="Plan, Actual"></div>
       </div>
       <div class="deck-field"><span class="deck-field-label">Show</span>
-        <div class="deck-field-row deck-field-row--icons">
+        <div class="deck-field-row deck-field-row--wrap">
           <button type="button" data-chart-flag="labels" title="Labels under each entry">Labels</button>
           <button type="button" data-chart-flag="values" title="The number on each bar or point">Values</button>
           <button type="button" data-chart-flag="legend" title="Which colour is which series">Legend</button>

@@ -116,15 +116,37 @@ body.deck-edit-mode .deck-edit-chrome.show {
 .edit-toggle.show, .edit-toggle.active,
 .deck-btn-present.show, .deck-btn-present.active { opacity: 1; pointer-events: auto; }
 
-/* Saving is automatic, so the only thing the bar owes anyone is the receipt:
-   a word next to the title that appears when a write lands and fades. */
+/* The receipt, beside the title: when the browser copy was written, or when
+   the file was, or that the file is now behind. */
 .deck-save-note {
-  font-size: 0.7rem; letter-spacing: 0.04em; text-transform: uppercase;
+  font-size: 0.68rem; letter-spacing: 0.02em;
   color: var(--deck-chrome-muted, #8a8a8a);
   opacity: 0; transition: opacity 0.3s ease; pointer-events: none;
   white-space: nowrap;
 }
 .deck-save-note.is-on { opacity: 1; }
+.deck-save-note.is-warn { color: #b26a00; }
+
+/* Save is the one action in the bar that changes something outside the page,
+   so it carries weight — and a dot while the file is behind the deck. The
+   selector matches the shell's own button rule, which is (0,2,1); a bare
+   class would have lost to it and drawn a plain grey button. */
+body.deck-edit-mode .deck-left-hover-anchor button.deck-btn-save,
+.deck-btn-save {
+  position: relative;
+  border: 1px solid transparent;
+  background: #0f8a4a; color: #fff;
+  border-radius: 10px; padding: 8px 14px;
+  font-size: clamp(0.7rem, 1.1vw, 0.875rem);
+  cursor: pointer; white-space: nowrap;
+}
+body.deck-edit-mode .deck-left-hover-anchor button.deck-btn-save:hover,
+.deck-btn-save:hover { filter: brightness(1.07); background: #0f8a4a; }
+.deck-btn-save.is-dirty::after {
+  content: ''; position: absolute; top: 5px; right: 6px;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #ffd23f;
+}
 /* Presenting is a viewing action: offer it when not editing, and never
    alongside the editor's own toolbar. */
 body.deck-edit-mode .deck-btn-present { display: none; }
@@ -1232,6 +1254,11 @@ body.deck-presenting .deck-btn-view-present { display: none; }
 }
 /* Spread is not an icon pair — let those two keep their words. */
 .deck-inspector .deck-field-row--icons button[data-distribute] { width: auto; padding: 0 8px; }
+
+/* A row of short word-buttons. Putting these in the icon row squeezed each to
+   30px and the labels ran into one another. */
+.deck-inspector .deck-field-row--wrap { flex-wrap: wrap; gap: 4px; }
+.deck-inspector .deck-field-row--wrap button { padding: 3px 8px; }
 
 /* Chart words. These sit over the SVG rather than in it: the SVG stretches to
    the object box with preserveAspectRatio="none", which would squash any text
