@@ -739,6 +739,12 @@
         return true;
       }
 
+      /* Across more than one line this has to be done line by line, or the
+       * span ends up wrapping the <li> elements between them. */
+      if (typeof styleAcross === 'function') {
+        styleAcross(range, stylePatch);
+        return true;
+      }
       const contents = range.extractContents();
       span.appendChild(contents);
       range.insertNode(span);
@@ -833,7 +839,13 @@
       if (!textEl) return;
       textEl.focus();
       const before = textEl.innerHTML;
+      const isList = cmd === 'insertUnorderedList' || cmd === 'insertOrderedList';
+      if (isList && typeof stripBlockWhitespace === 'function') stripBlockWhitespace(textEl);
       document.execCommand(cmd, false, null);
+      if (isList) {
+        if (typeof dropEmptyItems === 'function') dropEmptyItems(textEl);
+        if (typeof tidyNestedLists === 'function') tidyNestedLists(textEl);
+      }
       const after = textEl.innerHTML;
       if (before !== after) {
         this.history.push({
@@ -3493,13 +3505,93 @@
    *
    * Undo restores the element's markup either way, so a wrap and a whole-block
    * change step back alike. */
+
+  /* A selection that runs across several lines cannot be dressed by one
+   * wrapper. Wrapping it put a <span> around the <li> elements it crossed,
+   * which is not allowed there: the browser re-parented what it could, the
+   * style landed on the first line only, and the whitespace at either end of
+   * the list was pushed out into empty bullets of its own.
+   *
+   * So each line is dressed separately, and no span ever contains a list item.
+   * The wraps run last-to-first, because wrapping one line moves nodes and
+   * would invalidate the boundary points of the lines before it. */
+  const BLOCKISH = 'li, p, div, h1, h2, h3, h4, h5, h6';
+
+  function leafBlocks(host, range) {
+    return Array.prototype.slice.call(host.querySelectorAll(BLOCKISH))
+      .filter(function (b) { return !b.querySelector(BLOCKISH); })
+      .filter(function (b) {
+        try { return range.intersectsNode(b); } catch (e) { return false; }
+      });
+  }
+
+  function clipToRange(block, range) {
+    const r = document.createRange();
+    r.selectNodeContents(block);
+    try {
+      if (range.comparePoint(r.startContainer, r.startOffset) < 0) {
+        r.setStart(range.startContainer, range.startOffset);
+      }
+      if (range.comparePoint(r.endContainer, r.endOffset) > 0) {
+        r.setEnd(range.endContainer, range.endOffset);
+      }
+    } catch (e) { /* boundary in another tree — take the whole block */ }
+    return r;
+  }
+
+  function styleAcross(range, css) {
+    const host = (range.commonAncestorContainer.nodeType === 1
+      ? range.commonAncestorContainer
+      : range.commonAncestorContainer.parentElement);
+    const text = host && host.closest && host.closest('.slide-object-text');
+    const blocks = text ? leafBlocks(text, range) : [];
+    if (blocks.length < 2) return [wrapRange(range, css)];
+    const parts = blocks.map(function (b) { return clipToRange(b, range); });
+    const made = [];
+    for (let i = parts.length - 1; i >= 0; i--) {
+      if (!parts[i].collapsed) made.unshift(wrapRange(parts[i], css));
+    }
+    /* Put the selection back over everything that was just changed, so a
+     * second change — size after face — still has the same words to work on. */
+    if (made.length) {
+      const back = document.createRange();
+      back.setStartBefore(made[0]);
+      back.setEndAfter(made[made.length - 1]);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(back);
+      lastTextRange = back.cloneRange();
+    }
+    return made;
+  }
+
+  /* Whitespace between a list and the edge of its text object is invisible
+   * until a list command turns it into an empty bullet. */
+  function stripBlockWhitespace(el) {
+    if (!el) return;
+    const structured = Array.prototype.some.call(el.childNodes, function (n) {
+      return n.nodeType === 1 && /^(UL|OL|P|DIV|LI)$/.test(n.tagName);
+    });
+    if (!structured) return;
+    Array.prototype.slice.call(el.childNodes).forEach(function (n) {
+      if (n.nodeType === 3 && !n.nodeValue.trim()) n.remove();
+    });
+  }
+
+  function dropEmptyItems(el) {
+    if (!el) return;
+    el.querySelectorAll('li').forEach(function (li) {
+      if (!li.childNodes.length) li.remove();
+    });
+  }
+
   function styleText(obj, css, scope) {
     const el = textEl(obj);
     if (!el) return;
     const range = scope === 'block' ? null : liveTextRange(obj);
     if (range) {
       const before = el.innerHTML;
-      wrapRange(range, css);
+      styleAcross(range, css);
       const after = el.innerHTML;
       history.push({
         undo: function () { el.innerHTML = before; lastTextRange = null; syncInspector(); },
@@ -3827,6 +3919,7 @@
     if (!el) return;
     if (currentBlockList(el) === kind) return;
     const before = el.innerHTML;
+    stripBlockWhitespace(el);
     const lines = blockLines(el).map(function (l) { return l.trim() ? l : '<br>'; });
     const after = kind === 'none'
       ? lines.map(function (l) { return l === '<br>' ? '' : l; }).join('<br>')
