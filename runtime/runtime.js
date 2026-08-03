@@ -137,6 +137,19 @@
       this._updateChrome();
       this.onSlideChange && this.onSlideChange(i);
     }
+    /* Which slide is current, without scrolling to it. goTo both moves the
+     * view and records where you are, which is right when something asks to
+     * go somewhere — but scrolling the canvas and clicking a slide also change
+     * where you are, and neither should yank the view. Without this the deck
+     * still believed it was on the first slide, so everything was inserted
+     * there no matter what you were looking at. */
+    setCurrent(i) {
+      this.refreshSlides();
+      if (i < 0 || i >= this.slides.length || i === this.current) return;
+      this.current = i;
+      this._updateChrome();
+      this.onSlideChange && this.onSlideChange(i);
+    }
     _updateChrome() {
       const n = this.slides.length;
       const p = n ? ((this.current + 1) / n) * 100 : 0;
@@ -1315,7 +1328,9 @@
         });
       }
       const w = await fileHandle.createWritable();
-      await w.write(new Blob([html], { type: 'text/html;charset=utf-8' }));
+      /* The stream takes the string directly — wrapping 300 KB in a Blob first
+       * bought nothing. */
+      await w.write(html);
       await w.close();
       lastFileAt = new Date();
       dirtySinceFile = false;
@@ -1491,6 +1506,38 @@
     }
   }
 
+  /* Clicking anywhere on a slide is a statement about which slide you mean,
+   * and so is scrolling one into view. */
+  function watchWhichSlide() {
+    document.addEventListener('pointerdown', function (e) {
+      if (!editor.active) return;
+      const sec = e.target.closest && e.target.closest('.slides-offset > section.slide');
+      if (!sec) return;
+      const i = (deck.slides || []).indexOf(sec);
+      if (i >= 0) deck.setCurrent(i);
+    }, true);
+
+    const canvas = document.querySelector('.slides-offset');
+    if (!canvas) return;
+    let timer = null;
+    const nearestToTheMiddle = function () {
+      if (presenting) return;
+      const box = canvas.getBoundingClientRect();
+      const mid = box.top + canvas.clientHeight / 2;
+      let best = -1, closest = Infinity;
+      (deck.slides || []).forEach(function (sec, i) {
+        const r = sec.getBoundingClientRect();
+        const gap = Math.abs((r.top + r.bottom) / 2 - mid);
+        if (gap < closest) { closest = gap; best = i; }
+      });
+      if (best >= 0) deck.setCurrent(best);
+    };
+    canvas.addEventListener('scroll', function () {
+      clearTimeout(timer);
+      timer = setTimeout(nearestToTheMiddle, 90);
+    }, { passive: true });
+  }
+
   const history = new HistoryStack(updateUndoRedoChrome);
   const deck = new SlideDeck();
   const editor = new SlideObjectEditor(deck, history);
@@ -1501,6 +1548,7 @@
   repaintCharts(document);
   refreshFields();
   editor.bind();
+  watchWhichSlide();
   updateUndoRedoChrome();
 
   /* A document's resting state is not editable — decks arrive with
@@ -2334,6 +2382,9 @@
     const panel = notesPanel();
     const slide = deck.slides && deck.slides[deck.current];
     if (!panel || !slide) return;
+    /* Now that scrolling changes the current slide, this runs while someone
+     * may be mid-sentence in the notes. Leave it alone if it has the caret. */
+    if (document.activeElement === panel) return;
     panel.value = slide.getAttribute('data-notes') || '';
   }
 
