@@ -1211,3 +1211,24 @@ body.deck-presenting .deck-btn-view-present { display: none; }
 }
 #btnAddFont:hover { background: var(--ui-surface-2, #f2f3f5); }
 .deck-inspector [data-text-font] { min-width: 0; }
+
+/* The hidden attribute is a UA rule, and any component that sets its own
+   display beats it. Rows that hide themselves were still on screen — the
+   align buttons sat there greyed on a single selection, which reads as
+   broken rather than as not-applicable. */
+[hidden] { display: none !important; }
+
+/* Icon buttons inside the inspector. The toolbar has its own svg rule; the
+   panel had none, so these drew as empty boxes. */
+.deck-inspector .deck-field-row--icons { flex-wrap: wrap; gap: 4px; }
+.deck-inspector .deck-field-row--icons button {
+  width: 30px; height: 26px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.deck-inspector .deck-field-row--icons button svg {
+  width: 17px; height: 17px;
+  fill: none; stroke: currentColor; stroke-width: 1.7;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+/* Spread is not an icon pair — let those two keep their words. */
+.deck-inspector .deck-field-row--icons button[data-distribute] { width: auto; padding: 0 8px; }

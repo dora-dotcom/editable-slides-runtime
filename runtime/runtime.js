@@ -291,10 +291,17 @@
     clearSelection() {
       this.selected.forEach((el) => el.classList.remove('is-selected'));
       this.selected.clear();
+      if (typeof syncInspector === 'function') syncInspector();
     }
     _addSel(el) {
       el.classList.add('is-selected');
       this.selected.add(el);
+      /* The panel used to be refreshed by a document-level click handler,
+       * which meant inserting an object refreshed it a moment BEFORE the
+       * object existed — the new sections stayed shut on the thing you had
+       * just made. Selection is what the panel is about, so selection tells
+       * it. */
+      if (typeof syncInspector === 'function') syncInspector();
     }
     _toggleSel(el) {
       if (this.selected.has(el)) {
@@ -318,13 +325,16 @@
       const obj = this._closestObject(e.target);
       const slide = e.target.closest && e.target.closest('section.slide');
 
-      if (obj && e.ctrlKey) {
+      /* Ctrl-click alone is a right-click on a Mac, so multiple selection was
+       * unreachable on half the machines this runs on. Shift is the one
+       * everybody already knows. */
+      if (obj && (e.shiftKey || e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         this._toggleSel(obj);
         return;
       }
 
-      if (obj && !e.ctrlKey) {
+      if (obj && !(e.shiftKey || e.ctrlKey || e.metaKey)) {
         const onResize = e.target.closest('.slide-object-resize');
         if (onResize) {
           e.preventDefault();
@@ -2079,6 +2089,16 @@
     return { x: o.left - s.left, y: o.top - s.top, w: o.width, h: o.height };
   }
 
+  /* An object's resting transform is no longer always nothing — it can be
+   * turned. Every animation here used to end at transform:none, which
+   * straightened a rotated object the moment it arrived. */
+  function restTransform(obj) { return (obj.style.transform || '').trim() || 'none'; }
+  function overRest(t, obj) {
+    const rest = restTransform(obj);
+    if (rest === 'none') return t;
+    return t === 'none' ? rest : t + ' ' + rest;
+  }
+
   function morphInto(slideIndex, fromIndex) {
     if (prefersReducedMotion() || fromIndex === slideIndex) return;
     const slides = deck.slides || [];
@@ -2100,8 +2120,8 @@
 
       obj.animate(
         [
-          { transformOrigin: 'top left', transform: 'translate(' + dx + 'px,' + dy + 'px) scale(' + sx + ',' + sy + ')' },
-          { transformOrigin: 'top left', transform: 'none' }
+          { transformOrigin: 'top left', transform: overRest('translate(' + dx + 'px,' + dy + 'px) scale(' + sx + ',' + sy + ')', obj) },
+          { transformOrigin: 'top left', transform: restTransform(obj) }
         ],
         { duration: 520, easing: 'cubic-bezier(.22,.61,.36,1)' }
       );
@@ -2121,7 +2141,10 @@
   function playEntrances(slide) {
     if (prefersReducedMotion() || !slide) return;
     slide.querySelectorAll('[data-fx-enter]').forEach(function (obj) {
-      const frames = FX_ENTER[obj.getAttribute('data-fx-enter')] || FX_ENTER.fade;
+      const base = FX_ENTER[obj.getAttribute('data-fx-enter')] || FX_ENTER.fade;
+      const frames = base.map(function (f) {
+        return f.transform === undefined ? f : Object.assign({}, f, { transform: overRest(f.transform, obj) });
+      });
       const order = parseInt(obj.getAttribute('data-fx-order') || '0', 10) || 0;
       const dur = parseFloat(obj.getAttribute('data-fx-duration') || '') || (frames.length && frames[0].transform ? 750 : 550);
       obj.animate(frames, { duration: dur, delay: order * 90, easing: 'cubic-bezier(.22,.61,.36,1)', fill: 'backwards' });
@@ -2161,6 +2184,22 @@
     });
   }
 
+  /* A slide can say how it arrives. This runs on the slide itself rather than
+   * on the scroller, so it composes with a deck that snaps and with one that
+   * does not. */
+  const SLIDE_IN = {
+    fade:  [{ opacity: 0 }, { opacity: 1 }],
+    slide: [{ transform: 'translateX(6%)', opacity: 0 }, { transform: 'none', opacity: 1 }],
+    up:    [{ transform: 'translateY(6%)', opacity: 0 }, { transform: 'none', opacity: 1 }],
+    zoom:  [{ transform: 'scale(1.04)', opacity: 0 }, { transform: 'none', opacity: 1 }]
+  };
+  function playTransition(slide) {
+    if (prefersReducedMotion() || !slide) return;
+    const frames = SLIDE_IN[slide.getAttribute('data-transition')];
+    if (!frames) return;
+    slide.animate(frames, { duration: 420, easing: 'cubic-bezier(.22,.61,.36,1)', fill: 'backwards' });
+  }
+
   (function () {
     let previous = deck.current;
     const already = deck.onSlideChange;
@@ -2169,6 +2208,7 @@
       const slide = (deck.slides || [])[i];
       // Motion belongs to viewing, not editing: it would fight a drag.
       if (!editor.active) {
+        playTransition(slide);
         morphInto(i, previous);
         playEntrances(slide);
         playCountUps(slide);
@@ -2565,6 +2605,402 @@
     if (t && !isNaN(v)) t.style.fontSize = v + 'px';
   });
 
+
+  /* === Fill, stroke, fit: the properties the insert buttons were missing ===
+   *
+   * You could put a rectangle on a slide and then not colour it, which made
+   * the Shape button half a feature. Same for a picture's crop and a video's
+   * cover. Each of these edits an attribute or an inline style on the node the
+   * object already has, so nothing new is invented for a document to carry. */
+
+  function shapeSvg(obj) { return obj && obj.querySelector('.slide-object-shape svg'); }
+  function imageEl(obj) { return obj && obj.querySelector('.slide-object-graphic img'); }
+  function mediaEl(obj) { return obj && obj.querySelector('.slide-object-media video, .slide-object-media audio'); }
+
+  /* A colour input needs six hex digits, and these documents legitimately
+   * carry var(--token) and currentColor. Ask the browser what it resolved to
+   * rather than trying to parse the authored value. */
+  function hexOf(el, prop) {
+    if (!el) return null;
+    const v = getComputedStyle(el)[prop];
+    const m = v && v.match(/\d+/g);
+    if (!m || m.length < 3) return null;
+    return '#' + m.slice(0, 3).map(function (n) {
+      return ('0' + parseInt(n, 10).toString(16)).slice(-2);
+    }).join('');
+  }
+
+  function shapeAttr(obj, name, value) {
+    const svg = shapeSvg(obj);
+    if (!svg) return;
+    const before = svg.getAttribute(name);
+    pushAttr(function (v) {
+      if (v === null) svg.removeAttribute(name);
+      else svg.setAttribute(name, v);
+      /* An arrow's head is a filled polygon of its own; left alone it kept the
+       * old colour while the shaft changed and the arrow came apart. */
+      if (name === 'stroke') {
+        svg.querySelectorAll('polygon').forEach(function (p) { p.setAttribute('fill', v); });
+      }
+    }, before, value);
+  }
+
+  document.addEventListener('input', function (e) {
+    const t = e.target;
+    if (!t.closest) return;
+    const obj = selectedObject();
+    if (!obj) return;
+    if (t.closest('[data-shape-fill]')) shapeAttr(obj, 'fill', t.value);
+    else if (t.closest('[data-shape-stroke]')) shapeAttr(obj, 'stroke', t.value);
+    else if (t.closest('[data-shape-stroke-width]')) shapeAttr(obj, 'stroke-width', t.value);
+    else if (t.closest('[data-shape-radius]')) {
+      const svg = shapeSvg(obj);
+      const r = svg && svg.querySelector('rect');
+      if (r) {
+        const before = r.getAttribute('rx');
+        pushAttr(function (v) { r.setAttribute('rx', v); r.setAttribute('ry', v); }, before, t.value);
+      }
+    } else if (t.closest('[data-img-radius]')) {
+      const img = imageEl(obj);
+      if (img) setStyle(img, 'borderRadius', t.value ? t.value + 'px' : '');
+    } else if (t.closest('[data-media-radius]')) {
+      const m = mediaEl(obj);
+      if (m) setStyle(m, 'borderRadius', t.value ? t.value + 'px' : '');
+    }
+  });
+
+  document.addEventListener('change', function (e) {
+    const t = e.target;
+    if (!t.closest) return;
+    const obj = selectedObject();
+    if (!obj) return;
+    if (t.closest('[data-shape-dash]')) shapeAttr(obj, 'stroke-dasharray', t.value || null);
+    else if (t.closest('[data-img-fit]')) {
+      const img = imageEl(obj);
+      if (img) setStyle(img, 'objectFit', t.value);
+    } else if (t.closest('[data-media-fit]')) {
+      const m = mediaEl(obj);
+      if (m) setStyle(m, 'objectFit', t.value);
+    }
+  });
+
+  document.addEventListener('click', function (e) {
+    const t = e.target;
+    if (!t.closest) return;
+    const obj = selectedObject();
+    if (!obj) return;
+    if (t.closest('[data-shape-fill-none]')) { shapeAttr(obj, 'fill', 'none'); syncInspector(); }
+    const flag = t.closest('[data-media-flag]');
+    if (flag) {
+      const m = mediaEl(obj);
+      if (!m) return;
+      const name = flag.getAttribute('data-media-flag');
+      const before = m.hasAttribute(name);
+      pushAttr(function (v) {
+        if (v) m.setAttribute(name, ''); else m.removeAttribute(name);
+        if (name === 'muted') m.muted = !!v;
+      }, before, !before);
+      syncInspector();
+    }
+    if (t.closest('[data-media-poster-clear]')) {
+      const m = mediaEl(obj);
+      if (m && m.tagName === 'VIDEO') {
+        const before = m.getAttribute('poster');
+        pushAttr(function (v) { if (v) m.setAttribute('poster', v); else m.removeAttribute('poster'); }, before, null);
+      }
+    }
+  });
+
+  /* One helper so every inline-style property change is undoable the same way
+   * and nothing has to remember to push its own record. */
+  function setStyle(el, prop, value) {
+    const before = el.style[prop];
+    pushAttr(function (v) { el.style[prop] = v; }, before, value);
+  }
+
+  (function () {
+    const inp = document.getElementById('deckPosterInput');
+    const btn = document.getElementById('btnMediaPoster');
+    if (!inp || !btn) return;
+    btn.addEventListener('click', function () { inp.click(); });
+    inp.addEventListener('change', function (e) {
+      const file = e.target.files[0];
+      inp.value = '';
+      const obj = selectedObject();
+      const m = mediaEl(obj);
+      if (!file || !m || m.tagName !== 'VIDEO') return;
+      const reader = new FileReader();
+      reader.onload = function (ev) {
+        const before = m.getAttribute('poster');
+        pushAttr(function (v) { if (v) m.setAttribute('poster', v); else m.removeAttribute('poster'); },
+          before, ev.target.result);
+      };
+      reader.readAsDataURL(file);
+    });
+  })();
+
+
+  /* === Text shape and table shape ===
+   *
+   * Alignment was the conspicuous hole: you could pick a font and a colour but
+   * not where the words sat in their box, which is the first thing anyone
+   * reaches for. Tables could gain and lose rows and nothing else. */
+
+  function textEl(obj) { return obj && obj.querySelector('.slide-object-text'); }
+
+  function tableEl(obj) { return obj && obj.querySelector('.slide-object-table table'); }
+  function tableCells(tbl) {
+    return tbl ? Array.prototype.slice.call(tbl.querySelectorAll('th, td')) : [];
+  }
+
+  /* Grid, padding and header are re-derived from the table's own attributes
+   * rather than remembered per cell, so undo only has to restore a word and
+   * the cells follow. */
+  function paintTable(tbl) {
+    if (!tbl) return;
+    const lines = tbl.getAttribute('data-grid') || 'all';
+    const px = tbl.getAttribute('data-pad-x');
+    const py = tbl.getAttribute('data-pad-y');
+    const head = tbl.hasAttribute('data-head');
+    const rows = Array.prototype.slice.call(tbl.rows || []);
+    rows.forEach(function (tr, ri) {
+      Array.prototype.slice.call(tr.cells).forEach(function (cell) {
+        if (lines === 'none') cell.style.border = 'none';
+        else if (lines === 'rows') {
+          cell.style.border = 'none';
+          cell.style.borderBottom = '1px solid var(--deck-chrome-border, currentColor)';
+        } else {
+          cell.style.border = '1px solid var(--deck-chrome-border, currentColor)';
+        }
+        if (px !== null || py !== null) {
+          cell.style.padding = (py === null ? '0.35' : py) + 'em ' + (px === null ? '0.6' : px) + 'em';
+        }
+        cell.style.fontWeight = (head && ri === 0) ? '700' : (ri === 0 && !head ? '400' : cell.style.fontWeight);
+      });
+    });
+  }
+
+  function tableSet(obj, attr, value) {
+    const tbl = tableEl(obj);
+    if (!tbl) return;
+    const before = tbl.getAttribute(attr);
+    pushAttr(function (v) {
+      if (v === null) tbl.removeAttribute(attr);
+      else tbl.setAttribute(attr, v);
+      paintTable(tbl);
+    }, before, value);
+  }
+
+  document.addEventListener('click', function (e) {
+    const t = e.target;
+    if (!t.closest) return;
+    const obj = selectedObject();
+    if (!obj) return;
+
+    const al = t.closest('[data-text-align]');
+    if (al) {
+      const el = textEl(obj);
+      if (el) { setStyle(el, 'textAlign', al.getAttribute('data-text-align')); syncInspector(); }
+      return;
+    }
+    const va = t.closest('[data-text-valign]');
+    if (va) {
+      const el = textEl(obj);
+      if (el) {
+        /* Vertical placement needs the box to be a column, so the two go on
+         * together — setting justify-content alone on a plain block does
+         * nothing, which would have read as a dead button. */
+        const want = va.getAttribute('data-text-valign');
+        const beforeD = el.style.display, beforeF = el.style.flexDirection, beforeJ = el.style.justifyContent;
+        pushAttr(function (v) {
+          el.style.display = v.d; el.style.flexDirection = v.f; el.style.justifyContent = v.j;
+        }, { d: beforeD, f: beforeF, j: beforeJ }, { d: 'flex', f: 'column', j: want });
+        syncInspector();
+      }
+      return;
+    }
+    if (t.closest('[data-text-leading-reset]')) {
+      const el = textEl(obj);
+      if (el) { setStyle(el, 'lineHeight', ''); syncInspector(); }
+      return;
+    }
+    if (t.closest('[data-table-header]')) {
+      const tbl = tableEl(obj);
+      if (tbl) { tableSet(obj, 'data-head', tbl.hasAttribute('data-head') ? null : ''); syncInspector(); }
+    }
+  });
+
+  document.addEventListener('input', function (e) {
+    const t = e.target;
+    if (!t.closest) return;
+    const obj = selectedObject();
+    if (!obj) return;
+    if (t.closest('[data-text-leading]')) {
+      const el = textEl(obj);
+      if (el) setStyle(el, 'lineHeight', t.value);
+    } else if (t.closest('[data-table-pad-x]')) tableSet(obj, 'data-pad-x', t.value);
+    else if (t.closest('[data-table-pad-y]')) tableSet(obj, 'data-pad-y', t.value);
+  });
+
+  document.addEventListener('change', function (e) {
+    const t = e.target;
+    if (!t.closest) return;
+    const obj = selectedObject();
+    if (!obj) return;
+    if (t.closest('[data-text-weight]')) {
+      const el = textEl(obj);
+      if (el) setStyle(el, 'fontWeight', t.value);
+    } else if (t.closest('[data-table-lines]')) tableSet(obj, 'data-grid', t.value);
+  });
+
+
+  /* === Angle, shadow, aligning to each other, and where a click goes === */
+
+  const SHADOWS = {
+    soft:   'drop-shadow(0 2px 6px rgba(0,0,0,0.18))',
+    medium: 'drop-shadow(0 6px 16px rgba(0,0,0,0.22))',
+    strong: 'drop-shadow(0 12px 28px rgba(0,0,0,0.30))'
+  };
+
+  function selectedObjects() {
+    return Array.prototype.slice.call(document.querySelectorAll('.slide-object.is-selected'));
+  }
+
+  /* Everything is positioned in percent of the slide, so alignment is done in
+   * percent too — no pixel round-trip, and it survives a resize of the window. */
+  function boxOf(el) {
+    return {
+      x: pct(el, 'left') || 0,
+      y: pct(el, 'top') || 0,
+      w: pct(el, 'width') || 0,
+      h: pct(el, 'height') || 0
+    };
+  }
+
+  function moveMany(els, place) {
+    const before = els.map(function (el) { return { left: el.style.left, top: el.style.top }; });
+    const boxes = els.map(boxOf);
+    const after = place(boxes);
+    const apply = function (list) {
+      els.forEach(function (el, i) {
+        if (list[i].left !== undefined) el.style.left = list[i].left;
+        if (list[i].top !== undefined) el.style.top = list[i].top;
+      });
+    };
+    pushAttr(apply, before, after);
+  }
+
+  const ALIGNERS = {
+    left:    function (b) { const v = Math.min.apply(null, b.map(function (x) { return x.x; })); return b.map(function () { return { left: v + '%' }; }); },
+    right:   function (b) { const v = Math.max.apply(null, b.map(function (x) { return x.x + x.w; })); return b.map(function (x) { return { left: (v - x.w) + '%' }; }); },
+    hcenter: function (b) { const v = b.reduce(function (a, x) { return a + x.x + x.w / 2; }, 0) / b.length; return b.map(function (x) { return { left: (v - x.w / 2) + '%' }; }); },
+    top:     function (b) { const v = Math.min.apply(null, b.map(function (x) { return x.y; })); return b.map(function () { return { top: v + '%' }; }); },
+    bottom:  function (b) { const v = Math.max.apply(null, b.map(function (x) { return x.y + x.h; })); return b.map(function (x) { return { top: (v - x.h) + '%' }; }); },
+    vcenter: function (b) { const v = b.reduce(function (a, x) { return a + x.y + x.h / 2; }, 0) / b.length; return b.map(function (x) { return { top: (v - x.h / 2) + '%' }; }); }
+  };
+
+  /* Spread keeps the two outermost objects where they are and evens the gaps
+   * between the rest — the same rule every drawing tool uses. */
+  function spread(boxes, axis) {
+    const pos = axis === 'h' ? 'x' : 'y';
+    const size = axis === 'h' ? 'w' : 'h';
+    const key = axis === 'h' ? 'left' : 'top';
+    const order = boxes.map(function (b, i) { return { i: i, b: b }; })
+      .sort(function (p, q) { return p.b[pos] - q.b[pos]; });
+    const first = order[0].b, last = order[order.length - 1].b;
+    const span = (last[pos] + last[size]) - first[pos];
+    const used = order.reduce(function (a, o) { return a + o.b[size]; }, 0);
+    const gap = (span - used) / (order.length - 1);
+    const out = boxes.map(function () { return {}; });
+    let at = first[pos];
+    order.forEach(function (o) {
+      out[o.i][key] = at + '%';
+      at += o.b[size] + gap;
+    });
+    return out;
+  }
+
+  document.addEventListener('click', function (e) {
+    const t = e.target;
+    if (!t.closest) return;
+
+    const al = t.closest('[data-align]');
+    if (al) {
+      const els = selectedObjects();
+      if (els.length >= 2) moveMany(els, ALIGNERS[al.getAttribute('data-align')]);
+      return;
+    }
+    const sp = t.closest('[data-distribute]');
+    if (sp) {
+      const els = selectedObjects();
+      if (els.length >= 3) moveMany(els, function (b) { return spread(b, sp.getAttribute('data-distribute')); });
+      return;
+    }
+    const obj = selectedObject();
+    if (!obj) return;
+    if (t.closest('[data-geom-rotate-reset]')) { setStyle(obj, 'transform', ''); syncInspector(); }
+    if (t.closest('[data-obj-link-clear]')) {
+      const before = obj.getAttribute('data-link');
+      pushAttr(function (v) {
+        if (v) obj.setAttribute('data-link', v); else obj.removeAttribute('data-link');
+      }, before, null);
+      syncInspector();
+    }
+  });
+
+  document.addEventListener('input', function (e) {
+    const t = e.target;
+    if (!t.closest) return;
+    const obj = selectedObject();
+    if (!obj) return;
+    if (t.closest('[data-geom="rotate"]')) {
+      const n = parseFloat(t.value);
+      setStyle(obj, 'transform', isNaN(n) || n === 0 ? '' : 'rotate(' + n + 'deg)');
+    } else if (t.closest('[data-obj-link]')) {
+      const before = obj.getAttribute('data-link');
+      const v = t.value.trim();
+      pushAttr(function (x) {
+        if (x) obj.setAttribute('data-link', x); else obj.removeAttribute('data-link');
+      }, before, v || null);
+    }
+  });
+
+  document.addEventListener('change', function (e) {
+    const t = e.target;
+    if (!t.closest) return;
+    if (t.closest('[data-slide-transition]')) {
+      const slide = currentSlide();
+      if (!slide) return;
+      const before = slide.getAttribute('data-transition');
+      pushAttr(function (v) {
+        if (v) slide.setAttribute('data-transition', v); else slide.removeAttribute('data-transition');
+      }, before, t.value || null);
+      return;
+    }
+    const obj = selectedObject();
+    if (!obj) return;
+    if (t.closest('[data-obj-shadow]')) {
+      const before = obj.style.filter;
+      pushAttr(function (v) { obj.style.filter = v; }, before, SHADOWS[t.value] || '');
+    }
+  });
+
+  /* A link is present-time behaviour, so it only answers while presenting —
+   * in the editor a click on the same object has to keep selecting it. */
+  document.addEventListener('click', function (e) {
+    if (!document.body.classList.contains('deck-presenting')) return;
+    const hit = e.target.closest && e.target.closest('[data-link]');
+    if (!hit) return;
+    const to = (hit.getAttribute('data-link') || '').trim();
+    if (!to) return;
+    e.preventDefault();
+    const n = parseInt(to, 10);
+    /* A bare number is a page in this deck; anything else is a place on the
+     * web, opened in its own tab so the talk is not navigated away from. */
+    if (String(n) === to && n >= 1) deck.goTo(n - 1);
+    else window.open(to, '_blank', 'noopener');
+  });
+
   function syncInspector() {
     const obj = selectedObject();
     const type = obj ? obj.getAttribute('data-object-type') : null;
@@ -2576,9 +3012,16 @@
     show('sectSelection', !!obj);
     show('sectGeometry', !!obj);
     show('sectMotion', !!obj);
+    /* Aligning objects to one another means nothing with one object, so the
+     * row is not offered until there are two. */
+    const alignRow = document.getElementById('alignRow');
+    if (alignRow) alignRow.hidden = selectedObjects().length < 2;
     show('sectText', type === 'text');
     show('sectTable', type === 'table');
     show('sectChart', type === 'chart');
+    show('sectShape', type === 'shape');
+    show('sectImage', type === 'graphic');
+    show('sectMedia', type === 'media');
 
     const name = document.getElementById('sectSelectionName');
     if (name) name.textContent = type ? type.charAt(0).toUpperCase() + type.slice(1) : 'Selection';
@@ -2599,6 +3042,18 @@
           f.value = v === null ? '' : Math.round(v * 10) / 10;
         }
       });
+      const rot = document.querySelector('[data-geom="rotate"]');
+      if (rot && document.activeElement !== rot) {
+        const m = (obj.style.transform || '').match(/rotate\(\s*(-?[\d.]+)deg/);
+        rot.value = m ? parseFloat(m[1]) : 0;
+      }
+      const sh = document.querySelector('[data-obj-shadow]');
+      if (sh && document.activeElement !== sh) {
+        const cur = obj.style.filter || '';
+        sh.value = Object.keys(SHADOWS).filter(function (k) { return SHADOWS[k] === cur; })[0] || '';
+      }
+      const lk = document.querySelector('[data-obj-link]');
+      if (lk && document.activeElement !== lk) lk.value = obj.getAttribute('data-link') || '';
       const op = document.querySelector('[data-geom="opacity"]');
       const opv = Math.round((parseFloat(obj.style.opacity || '1')) * 100);
       if (op && document.activeElement !== op) op.value = opv;
@@ -2611,6 +3066,62 @@
         document.querySelectorAll('[data-chart-type]').forEach(function (b) {
           b.classList.toggle('active', b.getAttribute('data-chart-type') === obj.getAttribute('data-chart'));
         });
+      }
+      if (type === 'shape') {
+        const svg = shapeSvg(obj);
+        const fillAttr = svg ? (svg.getAttribute('fill') || '') : '';
+        const f = document.querySelector('[data-shape-fill]');
+        if (f && document.activeElement !== f) {
+          f.value = fillAttr === 'none' ? '#000000' : (hexOf(svg, 'fill') || '#000000');
+        }
+        const st = document.querySelector('[data-shape-stroke]');
+        if (st && document.activeElement !== st) st.value = hexOf(svg, 'stroke') || '#000000';
+        const sw = document.querySelector('[data-shape-stroke-width]');
+        if (sw && svg && document.activeElement !== sw) sw.value = svg.getAttribute('stroke-width') || 0;
+        const da = document.querySelector('[data-shape-dash]');
+        if (da && svg && document.activeElement !== da) da.value = svg.getAttribute('stroke-dasharray') || '';
+        /* Only a rectangle has corners to round, so the row goes away rather
+         * than sitting there doing nothing on an ellipse or a line. */
+        const rect = svg && svg.querySelector('rect');
+        const rr = document.getElementById('shapeRadiusRow');
+        if (rr) rr.hidden = !rect;
+        const ri = document.querySelector('[data-shape-radius]');
+        if (ri && rect && document.activeElement !== ri) ri.value = parseFloat(rect.getAttribute('rx') || 0);
+      }
+      if (type === 'graphic') {
+        const img = imageEl(obj);
+        const fit = document.querySelector('[data-img-fit]');
+        if (img && fit && document.activeElement !== fit) fit.value = img.style.objectFit || 'contain';
+        const rad = document.querySelector('[data-img-radius]');
+        if (img && rad && document.activeElement !== rad) rad.value = parseFloat(img.style.borderRadius) || 0;
+      }
+      if (type === 'media') {
+        const m = mediaEl(obj);
+        const isVideo = !!m && m.tagName === 'VIDEO';
+        /* Audio has no picture, so fit, corners and a cover still are rows
+         * that could only mislead. */
+        ['mediaFitRow', 'mediaRadiusRow', 'mediaPosterRow'].forEach(function (id) {
+          const row = document.getElementById(id);
+          if (row) row.hidden = !isVideo;
+        });
+        const fit = document.querySelector('[data-media-fit]');
+        if (isVideo && fit && document.activeElement !== fit) fit.value = m.style.objectFit || 'contain';
+        const rad = document.querySelector('[data-media-radius]');
+        if (m && rad && document.activeElement !== rad) rad.value = parseFloat(m.style.borderRadius) || 0;
+        document.querySelectorAll('[data-media-flag]').forEach(function (b) {
+          b.classList.toggle('active', !!m && m.hasAttribute(b.getAttribute('data-media-flag')));
+        });
+      }
+      if (type === 'table') {
+        const tbl = tableEl(obj);
+        const hd = document.querySelector('[data-table-header]');
+        if (hd) hd.classList.toggle('active', !!tbl && tbl.hasAttribute('data-head'));
+        const gl = document.querySelector('[data-table-lines]');
+        if (gl && tbl && document.activeElement !== gl) gl.value = tbl.getAttribute('data-grid') || 'all';
+        const pxi = document.querySelector('[data-table-pad-x]');
+        if (pxi && tbl && document.activeElement !== pxi) pxi.value = tbl.getAttribute('data-pad-x') || 0.6;
+        const pyi = document.querySelector('[data-table-pad-y]');
+        if (pyi && tbl && document.activeElement !== pyi) pyi.value = tbl.getAttribute('data-pad-y') || 0.35;
       }
       if (type === 'text') {
         const c = document.querySelector('[data-text-colour]');
@@ -2627,6 +3138,26 @@
           const inline = (t.style.fontFamily || '').trim();
           const known = Array.prototype.some.call(ff.options, function (o) { return o.value === inline; });
           ff.value = known ? inline : '';
+        }
+        const wt = document.querySelector('[data-text-weight]');
+        if (wt && t && document.activeElement !== wt) wt.value = t.style.fontWeight || '';
+        document.querySelectorAll('[data-text-align]').forEach(function (b) {
+          const cur = t ? (t.style.textAlign || getComputedStyle(t).textAlign) : '';
+          b.classList.toggle('active', b.getAttribute('data-text-align') === cur);
+        });
+        document.querySelectorAll('[data-text-valign]').forEach(function (b) {
+          const cur = t && t.style.display === 'flex' ? t.style.justifyContent : '';
+          b.classList.toggle('active', b.getAttribute('data-text-valign') === cur);
+        });
+        const lh = document.querySelector('[data-text-leading]');
+        if (lh && t && document.activeElement !== lh) {
+          const inline = parseFloat(t.style.lineHeight);
+          if (!isNaN(inline)) lh.value = inline;
+          else {
+            const cs = getComputedStyle(t);
+            const ratio = parseFloat(cs.lineHeight) / parseFloat(cs.fontSize);
+            lh.value = isNaN(ratio) ? '' : Math.round(ratio * 100) / 100;
+          }
         }
         if (c && t) {
           const rgb = getComputedStyle(t).color.match(/\d+/g);
@@ -2661,6 +3192,8 @@
         ? 'Slide ' + (deck.current + 1) + ' in the file · skipped when presenting'
         : 'Slide ' + (at + 1) + ' of ' + shown.length;
     }
+    const tr = document.querySelector('[data-slide-transition]');
+    if (tr && slide && document.activeElement !== tr) tr.value = slide.getAttribute('data-transition') || '';
     const sk = document.querySelector('[data-slide-skip]');
     if (sk && slide && document.activeElement !== sk) sk.checked = slide.hasAttribute('data-skip');
 

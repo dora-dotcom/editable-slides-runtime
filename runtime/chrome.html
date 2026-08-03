@@ -73,6 +73,7 @@
 <input type="file" id="deckBgInput"    accept="image/*" style="display:none">
 <input type="file" id="deckMediaInput" accept="video/*,audio/*" style="display:none">
 <input type="file" id="deckFontInput"  accept=".woff2,.woff,.ttf,.otf" style="display:none">
+<input type="file" id="deckPosterInput" accept="image/*" style="display:none">
 
 <!-- Present controls: only visible while presenting -->
 <div class="deck-present-bar" id="deckPresentBar" data-deck-chrome-surface="">
@@ -139,10 +140,52 @@
       <div class="deck-field"><span class="deck-field-label">Opacity</span>
         <div class="deck-field-row"><input type="range" data-geom="opacity" min="0" max="100" step="1"><output data-geom-out="opacity">100</output></div>
       </div>
+      <div class="deck-field"><span class="deck-field-label">Angle</span>
+        <div class="deck-field-row">
+          <input type="number" data-geom="rotate" min="-180" max="180" step="1" aria-label="Rotation"><i class="deck-unit">°</i>
+          <button type="button" data-geom-rotate-reset title="Straighten">Reset</button>
+        </div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Shadow</span>
+        <div class="deck-field-row">
+          <select data-obj-shadow aria-label="Shadow">
+            <option value="">None</option>
+            <option value="soft">Soft</option>
+            <option value="medium">Medium</option>
+            <option value="strong">Strong</option>
+          </select>
+        </div>
+      </div>
       <div class="deck-field"><span class="deck-field-label">Order</span>
         <div class="deck-field-row deck-split2">
           <button type="button" data-arrange="front" title="Bring to front">Bring to front</button>
           <button type="button" data-arrange="back" title="Send to back">Send to back</button>
+        </div>
+      </div>
+      <div class="deck-field" id="alignRow"><span class="deck-field-label">Align to each other</span>
+        <div class="deck-field-row deck-field-row--icons">
+          <button type="button" data-align="left" title="Left edges" aria-label="Align left edges">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3v18M7 7h9M7 14h13"/></svg>
+          </button>
+          <button type="button" data-align="hcenter" title="Centres" aria-label="Align centres">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M8 7h8M5 14h14"/></svg>
+          </button>
+          <button type="button" data-align="right" title="Right edges" aria-label="Align right edges">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 3v18M8 7h9M4 14h13"/></svg>
+          </button>
+          <button type="button" data-align="top" title="Top edges" aria-label="Align top edges">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18M7 7v9M14 7v13"/></svg>
+          </button>
+          <button type="button" data-align="vcenter" title="Middles" aria-label="Align middles">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18M7 8v8M14 5v14"/></svg>
+          </button>
+          <button type="button" data-align="bottom" title="Bottom edges" aria-label="Align bottom edges">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18M7 8v9M14 4v13"/></svg>
+          </button>
+        </div>
+        <div class="deck-field-row deck-field-row--icons">
+          <button type="button" data-distribute="h" title="Even gaps across">Spread across</button>
+          <button type="button" data-distribute="v" title="Even gaps down">Spread down</button>
         </div>
       </div>
       <div class="deck-field"><span class="deck-field-label">Centre on the slide</span>
@@ -168,8 +211,55 @@
           <input type="number" data-text-size min="6" max="400" step="1"><i class="deck-unit">px</i>
         </div>
       </div>
+      <div class="deck-field"><span class="deck-field-label">Weight</span>
+        <div class="deck-field-row">
+          <select data-text-weight aria-label="Font weight">
+            <option value="">Inherit</option>
+            <option value="300">Light</option>
+            <option value="400">Regular</option>
+            <option value="500">Medium</option>
+            <option value="600">Semibold</option>
+            <option value="700">Bold</option>
+          </select>
+        </div>
+      </div>
       <div class="deck-field"><span class="deck-field-label">Colour</span>
         <div class="deck-field-row"><input type="color" data-text-colour><button type="button" data-text-colour-reset>Reset</button></div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Align</span>
+        <div class="deck-field-row deck-field-row--icons">
+          <button type="button" data-text-align="left" title="Left" aria-label="Align left">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 11h10M4 16h13"/></svg>
+          </button>
+          <button type="button" data-text-align="center" title="Centre" aria-label="Align centre">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 11h10M6 16h12"/></svg>
+          </button>
+          <button type="button" data-text-align="right" title="Right" aria-label="Align right">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M10 11h10M7 16h13"/></svg>
+          </button>
+          <button type="button" data-text-align="justify" title="Justify" aria-label="Justify">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 11h16M4 16h16"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Vertical</span>
+        <div class="deck-field-row deck-field-row--icons">
+          <button type="button" data-text-valign="flex-start" title="Top" aria-label="Align to the top">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M8 9h8v10H8z"/></svg>
+          </button>
+          <button type="button" data-text-valign="center" title="Middle" aria-label="Align to the middle">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16M8 7h8v10H8z"/></svg>
+          </button>
+          <button type="button" data-text-valign="flex-end" title="Bottom" aria-label="Align to the bottom">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M8 5h8v10H8z"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Line height</span>
+        <div class="deck-field-row">
+          <input type="number" data-text-leading min="0.7" max="4" step="0.05" aria-label="Line height">
+          <button type="button" data-text-leading-reset title="Back to the design's own">Reset</button>
+        </div>
       </div>
     </div>
   </section>
@@ -182,6 +272,24 @@
       </div>
       <div class="deck-field"><span class="deck-field-label">Columns</span>
         <div class="deck-field-row"><button type="button" data-table="col+">Add</button><button type="button" data-table="col-">Remove</button></div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Header</span>
+        <div class="deck-field-row"><button type="button" data-table-header title="Treat the first row as a header">Header row</button></div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Grid</span>
+        <div class="deck-field-row">
+          <select data-table-lines aria-label="Grid lines">
+            <option value="all">All lines</option>
+            <option value="rows">Rows only</option>
+            <option value="none">No lines</option>
+          </select>
+        </div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Padding</span>
+        <div class="deck-field-row">
+          <input type="number" data-table-pad-x min="0" max="4" step="0.05" aria-label="Padding across"><i class="deck-unit">x</i>
+          <input type="number" data-table-pad-y min="0" max="4" step="0.05" aria-label="Padding down"><i class="deck-unit">y</i>
+        </div>
       </div>
     </div>
   </section>
@@ -198,6 +306,91 @@
       </div>
       <div class="deck-field"><span class="deck-field-label">Data</span>
         <div class="deck-field-row"><input type="text" data-chart-data-input placeholder="Q1 12, Q2 18"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="deck-sect" id="sectShape" hidden>
+    <h4 class="deck-sect-head" data-fold><span class="deck-sect-caret"></span>Fill &amp; stroke</h4>
+    <div class="deck-sect-body">
+      <div class="deck-field"><span class="deck-field-label">Fill</span>
+        <div class="deck-field-row">
+          <input type="color" data-shape-fill aria-label="Fill colour">
+          <button type="button" data-shape-fill-none title="No fill">None</button>
+        </div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Stroke</span>
+        <div class="deck-field-row">
+          <input type="color" data-shape-stroke aria-label="Stroke colour">
+          <input type="number" data-shape-stroke-width min="0" max="40" step="0.5" aria-label="Stroke width"><i class="deck-unit">px</i>
+        </div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Line</span>
+        <div class="deck-field-row">
+          <select data-shape-dash aria-label="Line style">
+            <option value="">Solid</option>
+            <option value="7 5">Dashed</option>
+            <option value="0.1 5">Dotted</option>
+          </select>
+        </div>
+      </div>
+      <div class="deck-field" id="shapeRadiusRow"><span class="deck-field-label">Corners</span>
+        <div class="deck-field-row">
+          <input type="number" data-shape-radius min="0" max="50" step="1" aria-label="Corner radius">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="deck-sect" id="sectImage" hidden>
+    <h4 class="deck-sect-head" data-fold><span class="deck-sect-caret"></span>Fit &amp; corners</h4>
+    <div class="deck-sect-body">
+      <div class="deck-field"><span class="deck-field-label">Fit</span>
+        <div class="deck-field-row">
+          <select data-img-fit aria-label="How the picture fills its box">
+            <option value="contain">Whole picture</option>
+            <option value="cover">Fill the box</option>
+            <option value="fill">Stretch</option>
+          </select>
+        </div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Corners</span>
+        <div class="deck-field-row">
+          <input type="number" data-img-radius min="0" max="200" step="1" aria-label="Corner radius"><i class="deck-unit">px</i>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="deck-sect" id="sectMedia" hidden>
+    <h4 class="deck-sect-head" data-fold><span class="deck-sect-caret"></span>Playback</h4>
+    <div class="deck-sect-body">
+      <div class="deck-field" id="mediaFitRow"><span class="deck-field-label">Fit</span>
+        <div class="deck-field-row">
+          <select data-media-fit aria-label="How the video fills its box">
+            <option value="contain">Whole frame</option>
+            <option value="cover">Fill the box</option>
+            <option value="fill">Stretch</option>
+          </select>
+        </div>
+      </div>
+      <div class="deck-field" id="mediaRadiusRow"><span class="deck-field-label">Corners</span>
+        <div class="deck-field-row">
+          <input type="number" data-media-radius min="0" max="200" step="1" aria-label="Corner radius"><i class="deck-unit">px</i>
+        </div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Play</span>
+        <div class="deck-field-row">
+          <button type="button" data-media-flag="autoplay" title="Start when the slide arrives">Auto</button>
+          <button type="button" data-media-flag="loop" title="Play again from the start">Loop</button>
+          <button type="button" data-media-flag="muted" title="No sound">Mute</button>
+        </div>
+      </div>
+      <div class="deck-field" id="mediaPosterRow"><span class="deck-field-label">Cover</span>
+        <div class="deck-field-row">
+          <button type="button" id="btnMediaPoster" title="A still to show before it plays">Choose…</button>
+          <button type="button" data-media-poster-clear>Clear</button>
+        </div>
       </div>
     </div>
   </section>
@@ -219,6 +412,12 @@
           </select>
         </div>
       </div>
+      <div class="deck-field"><span class="deck-field-label">Click goes to</span>
+        <div class="deck-field-row">
+          <input type="text" data-obj-link placeholder="a page number, or https://…" aria-label="Where a click on this goes">
+          <button type="button" data-obj-link-clear title="No link">Clear</button>
+        </div>
+      </div>
       <div class="deck-field"><span class="deck-field-label">Numbers</span>
         <div class="deck-field-row"><button type="button" data-fx-countup-toggle>Count up from zero</button></div>
       </div>
@@ -230,6 +429,17 @@
   <section class="deck-sect" id="sectSlide">
     <h4 class="deck-sect-head" data-fold><span class="deck-sect-caret"></span>Slide</h4>
     <div class="deck-sect-body">
+      <div class="deck-field"><span class="deck-field-label">Transition</span>
+        <div class="deck-field-row">
+          <select data-slide-transition aria-label="How this slide arrives">
+            <option value="">None</option>
+            <option value="fade">Fade</option>
+            <option value="slide">Slide across</option>
+            <option value="up">Slide up</option>
+            <option value="zoom">Zoom</option>
+          </select>
+        </div>
+      </div>
       <div class="deck-field"><span class="deck-field-label">Background</span>
         <div class="deck-field-row">
           <input type="color" data-slide-bg>
