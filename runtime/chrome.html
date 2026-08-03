@@ -557,11 +557,16 @@
     <button type="button" data-rte-colour-reset title="Back to the design's own">&#8635;</button>
   </span>
   <span class="rte-toolbar-group" aria-label="Insert field">
-    <span class="rte-toolbar-meta">Field</span>
-    <button type="button" data-field-insert="page" title="Page number, kept live">#</button>
-    <button type="button" data-field-insert="pages" title="Total pages, kept live">/n</button>
-    <button type="button" data-field-insert="title" title="Deck title, kept live">Title</button>
-    <button type="button" data-field-insert="date" title="Today's date">Date</button>
+    <div class="deck-menu" data-menu="field">
+      <button type="button" class="deck-menu-btn" data-menu-toggle aria-haspopup="true" aria-expanded="false"
+              title="Insert something that keeps itself up to date">#</button>
+      <div class="deck-menu-list" role="menu">
+        <button type="button" role="menuitem" data-field-insert="page">Page number</button>
+        <button type="button" role="menuitem" data-field-insert="pages">Number of pages</button>
+        <button type="button" role="menuitem" data-field-insert="title">Deck title</button>
+        <button type="button" role="menuitem" data-field-insert="date">Today's date</button>
+      </div>
+    </div>
   </span>
 </div>
 

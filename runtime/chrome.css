@@ -235,11 +235,22 @@ body.deck-edit-mode .slide-object.is-selected .slide-object-resize { display: bl
 .snap-line-h { height: 1px; left: 0; right: 0; }
 
 /* === RTE toolbar === */
+/* One row. Wrapping put the field group on a second line and left the first
+   one half empty, which read as a box with a hole in it rather than as a
+   toolbar. Everything here is short enough to sit on a line, and the fields
+   went behind a menu — inserting a page number is not a formatting move and
+   it does not earn four buttons beside bold. */
 .rte-toolbar {
-  position: fixed; z-index: 9600; display: none; flex-wrap: wrap; gap: 4px;
+  position: fixed; z-index: 9600; display: none; flex-wrap: nowrap; gap: 4px;
+  width: max-content; max-width: calc(100vw - 16px);
   padding: 6px; background: var(--deck-chrome-bg); border: 1px solid var(--deck-chrome-border);
   border-radius: 10px; box-shadow: var(--deck-chrome-shadow);
 }
+.rte-toolbar .deck-menu-btn {
+  font-size: 12px; padding: 4px 8px; border-radius: 6px;
+  background: var(--deck-chrome-surface);
+}
+.rte-toolbar .deck-menu-list { min-width: 150px; }
 .rte-toolbar.visible { display: flex; }
 .rte-toolbar button {
   border: 1px solid var(--deck-chrome-border); background: var(--deck-chrome-surface);
@@ -1309,7 +1320,7 @@ body.deck-presenting .deck-btn-view-present { display: none; }
 /* The floating bar carries a face picker and a colour now, so its controls
    need the same footing as its buttons. */
 .rte-toolbar select[data-rte-font] {
-  max-width: 130px;
+  max-width: 108px;
   font: inherit; font-size: 0.78rem;
   padding: 2px 4px;
   border: 1px solid var(--ui-line, rgba(0,0,0,0.14));
