@@ -1173,9 +1173,13 @@
   /* ---------- persistence ---------- */
   function saveState() {
     const root = document.querySelector('.slides-offset') || document.body;
+    const fonts = document.getElementById('deckEmbeddedFonts');
     const data = {
-      v: 2,
-      deckHtml: serializeSlidesRoot(root)
+      v: 3,
+      deckHtml: serializeSlidesRoot(root),
+      /* Packed fonts live in the head, and the slides root is all that gets
+       * serialised — without this they survived export but not a reload. */
+      fontsCss: fonts ? fonts.textContent : ''
     };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -1227,6 +1231,15 @@
       if (!raw) return;
       const data = JSON.parse(raw);
       if (!data) return;
+      if (data.fontsCss) {
+        let fs = document.getElementById('deckEmbeddedFonts');
+        if (!fs) {
+          fs = document.createElement('style');
+          fs.id = 'deckEmbeddedFonts';
+          document.head.appendChild(fs);
+        }
+        fs.textContent = data.fontsCss;
+      }
       const parent = document.querySelector('.slides-offset') || document.body;
       if (typeof data.deckHtml === 'string') {
         parent.innerHTML = data.deckHtml;
@@ -2428,28 +2441,113 @@
     if (zoomFit) setTimeout(fitZoom, 0);
   });
 
-  // The font list is read off the document: whatever --font-* it defines is
-  // what it offers. A deck should never be handed a font its design does not
-  // know about.
-  let fontChoices = null;
+  /* The deck's own fonts come first, because a design that names its faces
+   * means them. But offering only those left the control empty on a deck that
+   * names none, and gave nobody a way to bring a font in — so beneath them sit
+   * stacks that need no download, and beneath those, whatever has been packed
+   * into this file. */
   function documentFonts() {
-    if (fontChoices) return fontChoices;
     const cs = getComputedStyle(document.documentElement);
-    fontChoices = [];
+    const out = [];
     ['display', 'body', 'mono'].forEach(function (key) {
-      const value = cs.getPropertyValue('--font-' + key).trim();
-      if (value) fontChoices.push({ label: key.charAt(0).toUpperCase() + key.slice(1), value: 'var(--font-' + key + ')' });
+      if (cs.getPropertyValue('--font-' + key).trim()) {
+        out.push({ label: key.charAt(0).toUpperCase() + key.slice(1), value: 'var(--font-' + key + ')' });
+      }
     });
-    return fontChoices;
+    return out;
   }
 
-  (function () {
+  /* Stacks rather than single names: these resolve to something on every
+   * machine, so a deck sent to someone else does not silently fall back. */
+  const SYSTEM_FONTS = [
+    { label: 'Sans', value: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' },
+    { label: 'Serif', value: 'Georgia, "Times New Roman", Times, serif' },
+    { label: 'Mono', value: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace' },
+    { label: 'Rounded', value: '"SF Pro Rounded", "Segoe UI Variable", Avenir, "Century Gothic", sans-serif' },
+    { label: 'Condensed', value: '"HelveticaNeue-CondensedBold", "Arial Narrow", "Roboto Condensed", sans-serif' }
+  ];
+
+  const EMBED_STYLE_ID = 'deckEmbeddedFonts';
+  function embedStyleEl(make) {
+    let el = document.getElementById(EMBED_STYLE_ID);
+    if (!el && make) {
+      el = document.createElement('style');
+      el.id = EMBED_STYLE_ID;
+      document.head.appendChild(el);
+    }
+    return el;
+  }
+  /* The families packed into this file are read back out of the rule block
+   * rather than tracked separately, so a deck that arrives with fonts already
+   * in it lists them without having been told. */
+  function embeddedFonts() {
+    const el = embedStyleEl(false);
+    if (!el) return [];
+    const seen = [];
+    const re = /font-family:\s*(?:"([^"]+)"|'([^']+)'|([^;{}]+))/g;
+    let m;
+    while ((m = re.exec(el.textContent))) {
+      const name = (m[1] || m[2] || m[3] || '').trim();
+      if (name && seen.indexOf(name) === -1) seen.push(name);
+    }
+    return seen.map(function (n) { return { label: n, value: '"' + n + '"' }; });
+  }
+
+  function paintFontList() {
     const sel = document.querySelector('[data-text-font]');
     if (!sel) return;
-    documentFonts().forEach(function (f) {
-      const o = document.createElement('option');
-      o.value = f.value; o.textContent = f.label;
-      sel.appendChild(o);
+    const keep = sel.value;
+    sel.innerHTML = '';
+    const inherit = document.createElement('option');
+    inherit.value = ''; inherit.textContent = 'Inherit';
+    sel.appendChild(inherit);
+    [['From this deck', documentFonts()],
+     ['Packed into this file', embeddedFonts()],
+     ['Always available', SYSTEM_FONTS]].forEach(function (pair) {
+      if (!pair[1].length) return;
+      const g = document.createElement('optgroup');
+      g.label = pair[0];
+      pair[1].forEach(function (f) {
+        const o = document.createElement('option');
+        o.value = f.value; o.textContent = f.label;
+        g.appendChild(o);
+      });
+      sel.appendChild(g);
+    });
+    sel.value = keep;
+  }
+  paintFontList();
+
+  /* A font file goes into the document the way an image does — base64, so the
+   * deck stays one file and the face travels with it to whoever opens it. */
+  (function () {
+    const inp = document.getElementById('deckFontInput');
+    const btn = document.getElementById('btnAddFont');
+    if (!inp || !btn) return;
+    btn.addEventListener('click', function () { inp.click(); });
+    inp.addEventListener('change', function (e) {
+      const file = e.target.files[0];
+      inp.value = '';
+      if (!file) return;
+      const family = file.name.replace(/\.(woff2?|ttf|otf)$/i, '').replace(/[_-]+/g, ' ').replace(/"/g, '').trim();
+      if (!family) return;
+      const reader = new FileReader();
+      reader.onload = function (ev) {
+        const style = embedStyleEl(true);
+        const fmt = /\.woff2$/i.test(file.name) ? 'woff2'
+          : /\.woff$/i.test(file.name) ? 'woff'
+          : /\.otf$/i.test(file.name) ? 'opentype' : 'truetype';
+        style.textContent += '\n@font-face{font-family:"' + family + '";src:url(' +
+          ev.target.result + ') format("' + fmt + '");font-display:swap}';
+        paintFontList();
+        const sel = document.querySelector('[data-text-font]');
+        if (sel) {
+          sel.value = '"' + family + '"';
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        scheduleSave();
+      };
+      reader.readAsDataURL(file);
     });
   })();
 
@@ -2523,8 +2621,12 @@
         }
         const ff = document.querySelector('[data-text-font]');
         if (ff && t && document.activeElement !== ff) {
+          /* Match against what the list actually offers. Checking only the
+           * deck's own fonts meant a system or packed face read back as
+           * "Inherit" the moment you clicked away from it. */
           const inline = (t.style.fontFamily || '').trim();
-          ff.value = documentFonts().some(function (f) { return f.value === inline; }) ? inline : '';
+          const known = Array.prototype.some.call(ff.options, function (o) { return o.value === inline; });
+          ff.value = known ? inline : '';
         }
         if (c && t) {
           const rgb = getComputedStyle(t).color.match(/\d+/g);

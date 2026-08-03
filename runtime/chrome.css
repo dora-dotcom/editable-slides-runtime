@@ -1196,3 +1196,18 @@ body.deck-edit-mode .deck-btn-view-present { display: none; }
 }
 .deck-btn-view-present.show { opacity: 1; pointer-events: auto; }
 body.deck-presenting .deck-btn-view-present { display: none; }
+
+/* The one control in the inspector that adds to the document rather than
+   changing the selection: keep it the size of the field it sits beside. */
+#btnAddFont {
+  flex: 0 0 auto;
+  width: 26px; height: 26px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--ui-line, rgba(0,0,0,0.14));
+  border-radius: 6px;
+  background: var(--ui-surface, #fff);
+  color: var(--ui-text, #1b1c1f);
+  font-size: 15px; line-height: 1; cursor: pointer;
+}
+#btnAddFont:hover { background: var(--ui-surface-2, #f2f3f5); }
+.deck-inspector [data-text-font] { min-width: 0; }

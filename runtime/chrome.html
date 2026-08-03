@@ -72,6 +72,7 @@
 <input type="file" id="deckImgInput"   accept="image/*" style="display:none">
 <input type="file" id="deckBgInput"    accept="image/*" style="display:none">
 <input type="file" id="deckMediaInput" accept="video/*,audio/*" style="display:none">
+<input type="file" id="deckFontInput"  accept=".woff2,.woff,.ttf,.otf" style="display:none">
 
 <!-- Present controls: only visible while presenting -->
 <div class="deck-present-bar" id="deckPresentBar" data-deck-chrome-surface="">
@@ -159,6 +160,7 @@
       <div class="deck-field"><span class="deck-field-label">Font</span>
         <div class="deck-field-row">
           <select data-text-font aria-label="Font"><option value="">Inherit</option></select>
+          <button type="button" id="btnAddFont" title="Pack a font file into this deck" aria-label="Add a font">+</button>
         </div>
       </div>
       <div class="deck-field"><span class="deck-field-label">Size</span>
