@@ -1,0 +1,21 @@
+/* Simular, light. Copied out of simular-design-system/colors_and_type.css
+   ([data-theme="light"]) under the names it uses there — the generator maps
+   them onto the ones the runtime reads, so nothing has to be renamed by hand. */
+:root {
+  --bg:      #f9faf5;
+  --bgcard:  #ffffff;
+  --t1:      #1a1a1e;
+  --t2:      #3c3c44;
+  --t3:      #6b6b73;
+  --as:      #16D342;
+  --gt:      #0B8226;
+  --b1:      #e2e2df;
+
+  --font-sans: "Manrope", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* The deck's own scale: these have no equivalent in a product token set. */
+  --title-size: 2.4rem;
+  --body-size:  1.05rem;
+  --small-size: 0.82rem;
+}
