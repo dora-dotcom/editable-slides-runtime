@@ -1302,11 +1302,40 @@
     paintSaveNote();
   }
 
-  async function saveToFile() {
+  /* The name of the file you are actually looking at.
+   *
+   * This is the difference between Save and Save-as. The picker was offered a
+   * name derived from the deck's title, and a title and a filename drift apart
+   * constantly — a deck called "Your deck, editable anywhere" living in
+   * runtime-deck.html was offered as "Your deck, editable anywhere.html", so an
+   * ordinary Save quietly proposed a SECOND file beside the real one. Offering
+   * the open file's own name turns the same dialog into "overwrite this?" —
+   * which is what was meant. Bento's picker makes exactly this call. */
+  function openedFileName() {
+    try {
+      const last = decodeURIComponent(location.pathname).split('/').pop();
+      return /\.html?$/i.test(last || '') ? last : null;
+    } catch (e) { return null; }
+  }
+
+  function deckStem() {
+    const opened = openedFileName();
+    if (opened) return opened.replace(/\.html?$/i, '');
+    return (document.title || 'deck').replace(/\.html?$/i, '');
+  }
+
+  /* A page opened from a disk is given no writable handle — that is the
+   * browser's rule, not a gap here, and it is why the first save has to ask
+   * once. Everything after it writes in place. Two things make the one dialog
+   * cheap: it is pointed at the file already open, and it carries an id, so the
+   * browser reopens it in the folder used last time. */
+  async function saveToFile(opts) {
+    const o = opts || {};
     const html = '<!DOCTYPE html>\n' + (function () {
       const clone = document.documentElement.cloneNode(true);
       sanitizeExportDocument(clone);
-      clone.removeAttribute('data-deck-mode');
+      if (o.readOnly) clone.setAttribute('data-deck-mode', 'view');
+      else clone.removeAttribute('data-deck-mode');
       return clone.outerHTML;
     })();
     /* No way to write in place — hand over a copy instead of pretending. */
@@ -1320,18 +1349,34 @@
     };
     if (typeof window.showSaveFilePicker !== 'function') { copyInstead(); return; }
     try {
-      if (!fileHandle) {
-        const stem = (document.title || 'deck').replace(/\.html?$/i, '');
-        fileHandle = await window.showSaveFilePicker({
-          suggestedName: stem + '.html',
+      const needsPicker = o.pick || !fileHandle;
+      let handle = fileHandle;
+      if (needsPicker) {
+        const ask = {
+          /* A copy names itself; a plain save offers the file it is already
+           * looking at. */
+          suggestedName: o.suffix ? deckStem() + o.suffix + '.html' : (openedFileName() || deckStem() + '.html'),
+          id: 'editable-deck-file',
           types: [{ description: 'Web page', accept: { 'text/html': ['.html'] } }]
-        });
+        };
+        /* startIn takes a handle, never a path — with one we land in the open
+         * file's own folder. */
+        if (fileHandle) ask.startIn = fileHandle;
+        handle = await window.showSaveFilePicker(ask);
+        /* A copy is a different file on purpose, so it must not become the one
+         * that plain Save writes from now on. */
+        if (!o.keepSeparate) fileHandle = handle;
       }
-      const w = await fileHandle.createWritable();
+      const w = await handle.createWritable();
       /* The stream takes the string directly — wrapping 300 KB in a Blob first
        * bought nothing. */
       await w.write(html);
       await w.close();
+      if (o.keepSeparate) {
+        /* A copy leaves the deck exactly as behind or as current as it was. */
+        paintSaveNote();
+        return;
+      }
       lastFileAt = new Date();
       dirtySinceFile = false;
       paintSaveNote();
@@ -1356,6 +1401,32 @@
   (function () {
     const btn = document.getElementById('btnSaveFile');
     if (btn) btn.addEventListener('click', function () { flushSave(); saveToFile(); });
+
+    const wrap = document.getElementById('deckSaveWrap');
+    const more = document.getElementById('btnSaveMore');
+    if (more && wrap) {
+      more.addEventListener('click', function (e) {
+        e.stopPropagation();
+        wrap.classList.toggle('open');
+        more.setAttribute('aria-expanded', wrap.classList.contains('open') ? 'true' : 'false');
+      });
+      document.addEventListener('click', function (e) {
+        if (!wrap.contains(e.target)) wrap.classList.remove('open');
+      });
+    }
+    const shut = function () { if (wrap) wrap.classList.remove('open'); };
+    const copy = document.getElementById('btnSaveCopy');
+    if (copy) copy.addEventListener('click', function () {
+      shut(); flushSave(); saveToFile({ pick: true, keepSeparate: true, suffix: ' copy' });
+    });
+    const elsewhere = document.getElementById('btnSaveElsewhere');
+    if (elsewhere) elsewhere.addEventListener('click', function () {
+      shut(); flushSave(); saveToFile({ pick: true });
+    });
+    const reading = document.getElementById('btnSaveReading');
+    if (reading) reading.addEventListener('click', function () {
+      shut(); flushSave(); saveToFile({ pick: true, keepSeparate: true, readOnly: true, suffix: ' (reading copy)' });
+    });
   })();
   function scheduleSave() {
     if (!editor.active) return;

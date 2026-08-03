@@ -1348,3 +1348,32 @@ body.deck-presenting .deck-btn-view-present { display: none; }
    only its indent is set, and that is copied from a list the deck already
    draws so a new one matches. */
 .slide-object-text li { margin: 0; }
+
+/* In the editor the filmstrip is the navigation, so the reader's progress dots
+   and bar are noise — and they float over the canvas, on top of a slide. */
+body.deck-edit-mode .nav-dots,
+body.deck-edit-mode .progress-bar { display: none !important; }
+
+/* The Save split: the action, and a caret for the things that are not it. */
+.deck-save-wrap { position: relative; display: inline-flex; }
+.deck-save-more {
+  border: 1px solid transparent; border-left: 1px solid rgba(255,255,255,0.35);
+  background: #0f8a4a; color: #fff; cursor: pointer;
+  border-radius: 0 10px 10px 0; padding: 8px 7px; font-size: 0.7rem; line-height: 1;
+}
+body.deck-edit-mode .deck-left-hover-anchor button.deck-save-more { background: #0f8a4a; color: #fff; }
+.deck-save-wrap .deck-btn-save { border-radius: 10px 0 0 10px; }
+.deck-save-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 10002;
+  display: none; flex-direction: column; min-width: 210px; padding: 5px;
+  border-radius: 10px; background: var(--deck-chrome-surface, #fff);
+  border: 1px solid var(--deck-chrome-border, rgba(0,0,0,0.15));
+  box-shadow: var(--deck-chrome-shadow, 0 8px 26px rgba(0,0,0,0.16));
+}
+.deck-save-wrap.open .deck-save-menu { display: flex; }
+.deck-save-menu > button {
+  font: inherit; font-size: 0.8rem; text-align: left; padding: 7px 10px;
+  border: 0; border-radius: 6px; background: transparent; color: inherit; cursor: pointer;
+  white-space: nowrap;
+}
+.deck-save-menu > button:hover { background: var(--deck-chrome-bg, rgba(0,0,0,0.06)); }
