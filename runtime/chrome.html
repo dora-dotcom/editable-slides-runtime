@@ -264,6 +264,13 @@
           </button>
         </div>
       </div>
+      <div class="deck-field"><span class="deck-field-label">List</span>
+        <div class="deck-field-row deck-field-row--wrap">
+          <button type="button" data-block-list="none">None</button>
+          <button type="button" data-block-list="ul">Bullets</button>
+          <button type="button" data-block-list="ol">Numbers</button>
+        </div>
+      </div>
       <div class="deck-field"><span class="deck-field-label">Line height</span>
         <div class="deck-field-row">
           <input type="number" data-text-leading min="0.7" max="4" step="0.05" aria-label="Line height">
@@ -545,6 +552,14 @@
   <span class="rte-toolbar-group"><button type="button" data-cmd="bold"><strong>B</strong></button>
   <button type="button" data-cmd="italic"><em>I</em></button>
   <button type="button" data-cmd="underline"><u>U</u></button></span>
+  <span class="rte-toolbar-group" aria-label="Lists">
+    <button type="button" data-cmd="insertUnorderedList" title="Bulleted list" aria-label="Bulleted list">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="4.5" cy="7" r="1.4"/><circle cx="4.5" cy="12" r="1.4"/><circle cx="4.5" cy="17" r="1.4"/><path d="M9 7h11M9 12h11M9 17h11"/></svg>
+    </button>
+    <button type="button" data-cmd="insertOrderedList" title="Numbered list" aria-label="Numbered list">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7h11M9 12h11M9 17h11"/><text x="2" y="8.6" font-size="6.5" stroke="none" fill="currentColor">1</text><text x="2" y="13.8" font-size="6.5" stroke="none" fill="currentColor">2</text><text x="2" y="19" font-size="6.5" stroke="none" fill="currentColor">3</text></svg>
+    </button>
+  </span>
   <span class="rte-toolbar-group" aria-label="Font family">
     <select data-rte-font aria-label="Font"><option value="">Inherit</option></select>
   </span>

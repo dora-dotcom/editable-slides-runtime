@@ -1333,3 +1333,18 @@ body.deck-presenting .deck-btn-view-present { display: none; }
   border: 1px solid var(--ui-line, rgba(0,0,0,0.14));
   border-radius: 6px; background: none; cursor: pointer;
 }
+
+/* The bar's list toggles are drawn, not lettered — B, I and U are words but a
+   bullet list is not. The bar had no svg rule of its own, so they came out as
+   empty boxes. */
+.rte-toolbar button svg {
+  display: block; width: 15px; height: 15px;
+  fill: none; stroke: currentColor; stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.rte-toolbar button:has(svg) { padding: 4px 6px; }
+
+/* A list inside a text object keeps the deck's own markers, font and colour;
+   only its indent is set, and that is copied from a list the deck already
+   draws so a new one matches. */
+.slide-object-text li { margin: 0; }

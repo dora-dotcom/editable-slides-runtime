@@ -638,7 +638,7 @@
     }
 
     _syncRteButtons() {
-      ['bold', 'italic', 'underline'].forEach((cmd) => {
+      ['bold', 'italic', 'underline', 'insertUnorderedList', 'insertOrderedList'].forEach((cmd) => {
         const b = this.toolbar.querySelector('button[data-cmd="' + cmd + '"]');
         if (!b) return;
         try { b.classList.toggle('is-active', document.queryCommandState(cmd)); } catch (_) {}
@@ -3763,6 +3763,110 @@
     }
   })();
 
+
+  /* === Lists ===
+   *
+   * A text object could not become a list at all. The bullets in the decks
+   * this runtime edits are whatever <ul> their author wrote; anything typed
+   * here stayed a run of lines.
+   *
+   * Two ways in, along the same line as the rest: the bar over a selection
+   * turns those lines into a list, and the panel turns the whole block into
+   * one. */
+
+  /* A new list should look like the lists this deck already has rather than
+   * like a browser default — 40px of page indent is a document convention and
+   * wrong on a slide. So measure one the deck already draws, if it has any. */
+  let listMetrics = null;
+  function listLook() {
+    if (listMetrics) return listMetrics;
+    const found = document.querySelector('.slides-offset ul, .slides-offset ol');
+    if (found) {
+      const cs = getComputedStyle(found);
+      listMetrics = 'margin:' + cs.marginTop + ' 0 ' + cs.marginBottom + ' 0;padding-left:' + cs.paddingLeft + ';';
+    } else {
+      listMetrics = 'margin:0;padding-left:1.25em;';
+    }
+    return listMetrics;
+  }
+
+  function escapeText(t) {
+    return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  /* What the block reads as, line by line, whether it is currently a list, a
+   * run of <br>-separated text, or a stack of paragraphs. */
+  function blockLines(el) {
+    const list = el.querySelector(':scope > ul, :scope > ol');
+    if (list) {
+      return Array.prototype.map.call(list.children, function (li) { return li.innerHTML; });
+    }
+    const out = [];
+    let buf = '';
+    Array.prototype.forEach.call(el.childNodes, function (n) {
+      if (n.nodeType === 1 && n.tagName === 'BR') { out.push(buf); buf = ''; return; }
+      if (n.nodeType === 1 && /^(P|DIV|LI|H[1-6])$/.test(n.tagName)) {
+        if (buf.trim()) out.push(buf);
+        buf = '';
+        out.push(n.innerHTML);
+        return;
+      }
+      buf += n.nodeType === 3 ? escapeText(n.nodeValue) : (n.outerHTML || '');
+    });
+    if (buf.trim() || !out.length) out.push(buf);
+    return out;
+  }
+
+  function currentBlockList(el) {
+    const list = el && el.querySelector(':scope > ul, :scope > ol');
+    return list ? list.tagName.toLowerCase() : 'none';
+  }
+
+  function setBlockList(obj, kind) {
+    const el = textEl(obj);
+    if (!el) return;
+    if (currentBlockList(el) === kind) return;
+    const before = el.innerHTML;
+    const lines = blockLines(el).map(function (l) { return l.trim() ? l : '<br>'; });
+    const after = kind === 'none'
+      ? lines.map(function (l) { return l === '<br>' ? '' : l; }).join('<br>')
+      : '<' + kind + ' style="' + listLook() + '">' +
+        lines.map(function (l) { return '<li>' + l + '</li>'; }).join('') +
+        '</' + kind + '>';
+    pushAttr(function (v) { el.innerHTML = v; lastTextRange = null; }, before, after);
+    syncInspector();
+  }
+
+  document.addEventListener('click', function (e) {
+    const b = e.target.closest && e.target.closest('[data-block-list]');
+    if (!b) return;
+    const obj = selectedObject();
+    if (obj) setBlockList(obj, b.getAttribute('data-block-list'));
+  });
+
+  /* Tab moves an item in, Shift+Tab out — the one gesture everybody tries on a
+   * list. Without it Tab left the text entirely. */
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Tab') return;
+    const t = e.target;
+    if (!t.closest) return;
+    const li = t.closest('.slide-object-text li');
+    if (!li) return;
+    const host = li.closest('.slide-object-text');
+    if (!host || host.getAttribute('contenteditable') !== 'true') return;
+    e.preventDefault();
+    const before = host.innerHTML;
+    document.execCommand(e.shiftKey ? 'outdent' : 'indent', false, null);
+    const after = host.innerHTML;
+    if (before !== after) {
+      history.push({
+        undo: function () { host.innerHTML = before; },
+        redo: function () { host.innerHTML = after; }
+      });
+      updateUndoRedoChrome();
+    }
+  }, true);
+
   function syncInspector() {
     const obj = selectedObject();
     const type = obj ? obj.getAttribute('data-object-type') : null;
@@ -3953,6 +4057,10 @@
         document.querySelectorAll('[data-text-valign]').forEach(function (b) {
           const cur = t && t.style.display === 'flex' ? t.style.justifyContent : '';
           b.classList.toggle('active', b.getAttribute('data-text-valign') === cur);
+        });
+        const kind = currentBlockList(t);
+        document.querySelectorAll('[data-block-list]').forEach(function (b) {
+          b.classList.toggle('active', b.getAttribute('data-block-list') === kind);
         });
         const lh = document.querySelector('[data-text-leading]');
         if (lh && t && document.activeElement !== lh) {
