@@ -46,23 +46,30 @@
       this._r = [];
       this._onChange = typeof onChange === 'function' ? onChange : function () {};
     }
+    /* Saving hangs off a real change to the deck, not off the chrome being
+     * refreshed — hooked to the latter, merely opening a file wrote a copy
+     * and told you it had saved something you had not done. */
+    _changed() {
+      if (typeof scheduleSave === 'function') scheduleSave();
+      this._onChange();
+    }
     push(record) {
       this._u.push(record);
       if (this._u.length > MAX_HISTORY) this._u.shift();
       this._r.length = 0;
-      this._onChange();
+      this._changed();
     }
     undo() {
       const r = this._u.pop();
       if (r && r.undo) r.undo();
       if (r) this._r.push(r);
-      this._onChange();
+      this._changed();
     }
     redo() {
       const r = this._r.pop();
       if (r && r.redo) r.redo();
       if (r) this._u.push(r);
-      this._onChange();
+      this._changed();
     }
     canUndo() { return this._u.length > 0; }
     canRedo() { return this._r.length > 0; }
@@ -1424,7 +1431,6 @@
       btnRedo.disabled = !history.canRedo();
       btnRedo.setAttribute('aria-disabled', btnRedo.disabled ? 'true' : 'false');
     }
-    scheduleSave();
   }
 
   const history = new HistoryStack(updateUndoRedoChrome);
@@ -2840,15 +2846,15 @@
   document.addEventListener('change', function (e) {
     const sel = e.target.closest && e.target.closest('[data-text-font]');
     if (!sel) return;
-    const t = selectedObject() && selectedObject().querySelector('.slide-object-text');
-    if (t) t.style.fontFamily = sel.value;
+    const obj = selectedObject();
+    if (obj) styleText(obj, { fontFamily: sel.value });
   });
   document.addEventListener('input', function (e) {
     const f = e.target.closest && e.target.closest('[data-text-size]');
     if (!f) return;
-    const t = selectedObject() && selectedObject().querySelector('.slide-object-text');
+    const obj = selectedObject();
     const v = parseFloat(f.value);
-    if (t && !isNaN(v)) t.style.fontSize = v + 'px';
+    if (obj && !isNaN(v)) styleText(obj, { fontSize: v + 'px' });
   });
 
 
@@ -3185,8 +3191,7 @@
     const obj = selectedObject();
     if (!obj) return;
     if (t.closest('[data-text-weight]')) {
-      const el = textEl(obj);
-      if (el) setStyle(el, 'fontWeight', t.value);
+      styleText(obj, { fontWeight: t.value });
     }
     else if (t.closest('[data-table-lines]')) tableSet(obj, 'data-grid', t.value);
     else if (t.closest('[data-table-preset]')) {
@@ -3379,6 +3384,243 @@
     if (!obj || obj.getAttribute('data-object-type') !== 'chart') return;
     if (t.closest('[data-chart-names]')) chartSet(obj, 'data-chart-names', t.value);
     else if (t.closest('[data-chart-colour]')) chartSet(obj, 'data-chart-colour', t.value);
+  });
+
+
+  /* === Styling part of a paragraph rather than all of it ===
+   *
+   * Font, size, weight and colour used to land on the whole text object,
+   * because that is the element the panel had a handle on. Selecting three
+   * words and making them red did nothing to those three words.
+   *
+   * The obstacle is that clicking anything in the panel moves focus out of the
+   * text and the selection goes with it. So the last real selection inside a
+   * text object is remembered, and the panel works against that. */
+  let lastTextRange = null;
+  document.addEventListener('selectionchange', function () {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    const r = sel.getRangeAt(0);
+    const host = r.startContainer.parentElement &&
+      r.startContainer.parentElement.closest('.slide-object-text[contenteditable="true"]');
+    /* Only selections inside editable text are of interest. A change caused by
+     * focusing a panel field is neither remembered nor allowed to forget. */
+    if (!host) return;
+    lastTextRange = r.collapsed ? null : r.cloneRange();
+  });
+
+  function liveTextRange(obj) {
+    if (!lastTextRange) return null;
+    const el = textEl(obj);
+    if (!el) return null;
+    const node = lastTextRange.commonAncestorContainer;
+    const holder = node.nodeType === 1 ? node : node.parentElement;
+    return holder && el.contains(holder) ? lastTextRange : null;
+  }
+
+  /* Wrap what is selected in a span carrying the change. surroundContents
+   * refuses a range that cuts across element boundaries — "half of this bold
+   * word and half of the next" — so the fallback lifts the contents out and
+   * puts them back inside the span, which handles every range. */
+  function wrapRange(range, css) {
+    const span = document.createElement('span');
+    Object.keys(css).forEach(function (k) { span.style[k] = css[k]; });
+    try {
+      range.surroundContents(span);
+    } catch (e) {
+      span.appendChild(range.extractContents());
+      range.insertNode(span);
+    }
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    const back = document.createRange();
+    back.selectNodeContents(span);
+    sel.addRange(back);
+    lastTextRange = back.cloneRange();
+    return span;
+  }
+
+  /* One entry point for every typographic control: part of the text if part of
+   * it is selected, the whole object otherwise. Undo restores the element's
+   * markup either way, so a wrap and a whole-block change step back alike. */
+  function styleText(obj, css) {
+    const el = textEl(obj);
+    if (!el) return;
+    const range = liveTextRange(obj);
+    if (range) {
+      const before = el.innerHTML;
+      wrapRange(range, css);
+      const after = el.innerHTML;
+      history.push({
+        undo: function () { el.innerHTML = before; lastTextRange = null; syncInspector(); },
+        redo: function () { el.innerHTML = after; lastTextRange = null; syncInspector(); }
+      });
+      updateUndoRedoChrome();
+      return;
+    }
+    const before = {};
+    const after = {};
+    Object.keys(css).forEach(function (k) { before[k] = el.style[k]; after[k] = css[k]; });
+    pushAttr(function (v) {
+      Object.keys(v).forEach(function (k) { el.style[k] = v[k]; });
+    }, before, after);
+  }
+
+
+  /* === Copy, cut, paste, duplicate ===
+   *
+   * None of this existed. You could not copy a box, a picture or a slide —
+   * the only way to get a second one was to build it again.
+   *
+   * The clipboard here is the runtime's own rather than the system's: an
+   * object is a piece of this document's markup, and asking the OS to carry
+   * that faithfully between two file:// pages is a losing game. Images pasted
+   * from outside are handled separately, on the paste event, where the system
+   * clipboard genuinely does have something to give. */
+  let objClipboard = null;   // { kind: 'objects'|'slide', html: [...] }
+
+  function typingSomewhere(e) {
+    const t = e.target;
+    if (!t || !t.closest) return false;
+    if (t.closest('input, textarea, select')) return true;
+    return !!t.closest('[contenteditable="true"]');
+  }
+
+  function copySelection(cut) {
+    const els = selectedObjects();
+    if (els.length) {
+      objClipboard = { kind: 'objects', html: els.map(function (el) { return el.outerHTML; }) };
+      if (cut) {
+        const homes = els.map(function (el) { return { el: el, parent: el.parentNode, next: el.nextElementSibling }; });
+        homes.forEach(function (h) { h.el.remove(); });
+        editor.clearSelection();
+        history.push({
+          undo: function () { homes.forEach(function (h) { h.parent.insertBefore(h.el, h.next); }); },
+          redo: function () { homes.forEach(function (h) { h.el.remove(); }); }
+        });
+        updateUndoRedoChrome();
+      }
+      return true;
+    }
+    /* Nothing selected means the slide itself, which is the rule Bento uses
+     * and the one that makes ⌘C useful without a selection. */
+    const slide = currentSlide();
+    if (!slide) return false;
+    objClipboard = { kind: 'slide', html: [slide.outerHTML] };
+    return true;
+  }
+
+  function pasteClipboard() {
+    if (!objClipboard) return false;
+    if (objClipboard.kind === 'slide') {
+      const holder = document.createElement('div');
+      holder.innerHTML = objClipboard.html[0];
+      const copy = holder.firstElementChild;
+      if (!copy) return false;
+      copy.id = '';
+      const here = currentSlide();
+      if (here && here.parentNode) here.parentNode.insertBefore(copy, here.nextSibling);
+      else return false;
+      deck.refreshSlides();
+      ensureResizeHandles(copy);
+      ensureObjectControls(copy);
+      repaintCharts(copy);
+      history.push({
+        undo: function () { copy.remove(); deck.refreshSlides(); sidebar.refresh(); },
+        redo: function () { here.parentNode.insertBefore(copy, here.nextSibling); deck.refreshSlides(); sidebar.refresh(); }
+      });
+      updateUndoRedoChrome();
+      sidebar.refresh();
+      deck.goTo(deck.slides.indexOf(copy));
+      return true;
+    }
+
+    const slide = currentSlide();
+    const layer = slide && slide.querySelector('.slide-edit-layer');
+    if (!layer) return false;
+    const made = [];
+    objClipboard.html.forEach(function (html) {
+      const holder = document.createElement('div');
+      holder.innerHTML = html;
+      const copy = holder.firstElementChild;
+      if (!copy) return;
+      copy.classList.remove('is-selected');
+      /* A pasted object must not answer to the id it was copied from, or the
+       * two would morph into each other on the same slide. */
+      copy.setAttribute('data-oid', mintOid(copy.getAttribute('data-object-type') || 'obj'));
+      nudge(copy);
+      layer.appendChild(copy);
+      made.push(copy);
+    });
+    if (!made.length) return false;
+    ensureResizeHandles(layer);
+    ensureObjectControls(layer);
+    repaintCharts(layer);
+    editor.clearSelection();
+    made.forEach(function (el) { editor._addSel(el); });
+    history.push({
+      undo: function () { made.forEach(function (el) { el.remove(); }); },
+      redo: function () { made.forEach(function (el) { layer.appendChild(el); }); ensureResizeHandles(layer); }
+    });
+    updateUndoRedoChrome();
+    return true;
+  }
+
+  /* Land the copy a little off the original so it is visibly a second thing
+   * and not a redraw of the first. */
+  function nudge(el) {
+    const x = parseFloat(el.style.left) || 0;
+    const y = parseFloat(el.style.top) || 0;
+    el.style.left = Math.min(94, x + 2.5) + '%';
+    el.style.top = Math.min(94, y + 2.5) + '%';
+  }
+
+  /* Oids are unique within a slide, so a copied slide keeps its own — and
+   * that is on purpose: a duplicated slide morphing into its twin is exactly
+   * the trick duplicating a slide is for. */
+
+  function duplicateSelection() {
+    if (!selectedObjects().length) return false;
+    copySelection(false);
+    return pasteClipboard();
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (!editor.active || presenting) return;
+    if (!(e.ctrlKey || e.metaKey)) return;
+    const k = (e.key || '').toLowerCase();
+    if (k !== 'c' && k !== 'x' && k !== 'v' && k !== 'd') return;
+    /* Inside a text box or a field these belong to the text, not the deck. */
+    if (typingSomewhere(e)) return;
+    if (k === 'c') { if (copySelection(false)) e.preventDefault(); }
+    else if (k === 'x') { if (copySelection(true)) e.preventDefault(); }
+    else if (k === 'v') { if (pasteClipboard()) e.preventDefault(); }
+    else if (k === 'd') { e.preventDefault(); duplicateSelection(); }
+  });
+
+  /* An image on the system clipboard is the one thing worth taking from
+   * outside: screenshots are how most pictures reach a deck. */
+  document.addEventListener('paste', function (e) {
+    if (!editor.active || presenting) return;
+    if (typingSomewhere(e)) return;
+    const items = (e.clipboardData && e.clipboardData.items) || [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type && items[i].type.indexOf('image/') === 0) {
+        const file = items[i].getAsFile();
+        if (!file) continue;
+        e.preventDefault();
+        const reader = new FileReader();
+        reader.onload = function (ev) {
+          insertObject('graphic',
+            '<div class="slide-object-graphic" style="width:100%;height:100%;">' +
+            '<img src="' + ev.target.result + '" alt="" style="max-height:none;width:100%;height:100%;' +
+            'object-fit:contain;pointer-events:none;display:block;">' +
+            '</div>');
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+    }
   });
 
   function syncInspector() {
@@ -3687,13 +3929,32 @@
   document.addEventListener('input', function (e) {
     const c = e.target.closest && e.target.closest('[data-text-colour]');
     if (!c) return;
-    const t = selectedObject() && selectedObject().querySelector('.slide-object-text');
-    if (t) t.style.color = c.value;
+    const obj = selectedObject();
+    if (obj) styleText(obj, { color: c.value });
   });
   document.addEventListener('click', function (e) {
     if (!e.target.closest || !e.target.closest('[data-text-colour-reset]')) return;
-    const t = selectedObject() && selectedObject().querySelector('.slide-object-text');
-    if (t) { t.style.color = ''; syncInspector(); }
+    const obj = selectedObject();
+    const t = textEl(obj);
+    if (!t) return;
+    /* Reset means the design's own colour back, which for a part of a
+     * paragraph means taking the wrapper off rather than painting over it. */
+    const range = liveTextRange(obj);
+    if (range) {
+      const before = t.innerHTML;
+      const span = wrapRange(range, {});
+      span.style.color = '';
+      if (!span.getAttribute('style')) span.removeAttribute('style');
+      const after = t.innerHTML;
+      history.push({
+        undo: function () { t.innerHTML = before; lastTextRange = null; syncInspector(); },
+        redo: function () { t.innerHTML = after; lastTextRange = null; syncInspector(); }
+      });
+      updateUndoRedoChrome();
+    } else {
+      setStyle(t, 'color', '');
+    }
+    syncInspector();
   });
 
   // One place flips the flag, so the eye on the thumbnail and the checkbox in
