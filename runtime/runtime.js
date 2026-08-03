@@ -661,9 +661,12 @@
       /* Face and colour read back from where the selection actually starts,
        * so the bar describes the words under it rather than the box. */
       const sel = document.getSelection();
-      const at = sel && sel.rangeCount
-        ? (sel.getRangeAt(0).startContainer.parentElement || this._activeTextEl())
-        : this._activeTextEl();
+      /* Where the selection starts, resolved the same way everything else here
+       * resolves it: reading parentElement is wrong when the boundary is an
+       * element, which is exactly what it is after a wrap or a link. */
+      const at = (sel && sel.rangeCount
+        ? elementAtRangeStart(sel.getRangeAt(0))
+        : null) || this._activeTextEl();
       if (!at) return;
       const swatch = this.toolbar.querySelector('[data-rte-colour]');
       if (swatch && document.activeElement !== swatch) {
@@ -674,6 +677,24 @@
           }).join('');
         }
       }
+      if (this.toolbar._paintSize) this.toolbar._paintSize();
+      /* The link pair reads as one control when it says which state you are in —
+       * but "in a link" has to mean the same thing here as it does to the button
+       * itself. Asking only whether the selection STARTS inside one disabled
+       * Remove for a selection that began a character before the link, which is
+       * exactly the case the handler was taught to cope with. */
+      const host = this._activeTextEl();
+      let inLink = at.closest ? at.closest('a') : null;
+      if (!inLink && host && sel && sel.rangeCount) {
+        const r0 = sel.getRangeAt(0);
+        inLink = Array.prototype.slice.call(host.querySelectorAll('a')).some(function (a2) {
+          try { return r0.intersectsNode(a2); } catch (e) { return false; }
+        });
+      }
+      const linkBtn = this.toolbar.querySelector('[data-text-link]');
+      const unlinkBtn = this.toolbar.querySelector('[data-text-unlink]');
+      if (linkBtn) linkBtn.classList.toggle('is-active', !!inLink);
+      if (unlinkBtn) unlinkBtn.disabled = !inLink;
       const face = this.toolbar.querySelector('[data-rte-font]');
       if (face && document.activeElement !== face) {
         const inline = ((at.style && at.style.fontFamily) || '').trim();
@@ -787,50 +808,10 @@
         btn.addEventListener('mousedown', (ev) => ev.preventDefault());
         btn.addEventListener('click', () => this._exec(btn.getAttribute('data-cmd')));
       });
-      this.toolbar.querySelectorAll('button[data-size-step]').forEach((btn) => {
-        btn.addEventListener('mousedown', (ev) => ev.preventDefault());
-        btn.addEventListener('click', () => {
-          const step = parseInt(btn.getAttribute('data-size-step'), 10);
-          const textEl = this._activeTextEl();
-          if (!textEl) return;
-          /* This bar is about the selection, so the step is too. Measuring
-           * from where the selection starts rather than from the block keeps
-           * A+ growing what you can see growing. */
-          const sel = window.getSelection();
-          const live = sel && sel.rangeCount && !sel.getRangeAt(0).collapsed &&
-            textEl.contains(sel.getRangeAt(0).commonAncestorContainer);
-          const from = live
-            ? (elementAtRangeStart(sel.getRangeAt(0)) || textEl)
-            : textEl;
-          const cur = parseFloat(getComputedStyle(from).fontSize) || 16;
-          /* Bounded at both ends: a run of A− should stop at something legible
-           * rather than at nothing, and a held A+ should not walk off the
-           * slide. */
-          const next = Math.min(FONT_MAX, Math.max(FONT_MIN, cur + step)) + 'px';
-          if (live) {
-            const beforeHtml = textEl.innerHTML;
-            this._applyInlineStyle(textEl, { fontSize: next });
-            const afterHtml = textEl.innerHTML;
-            if (beforeHtml !== afterHtml) {
-              this.history.push({
-                undo: () => { textEl.innerHTML = beforeHtml; },
-                redo: () => { textEl.innerHTML = afterHtml; }
-              });
-            }
-          } else {
-            const beforeStyle = textEl.style.fontSize;
-            textEl.style.fontSize = next;
-            const afterStyle = textEl.style.fontSize;
-            if (beforeStyle !== afterStyle) {
-              this.history.push({
-                undo: () => { textEl.style.fontSize = beforeStyle; },
-                redo: () => { textEl.style.fontSize = afterStyle; }
-              });
-            }
-          }
-          this._updateRteToolbar();
-        });
-      });
+      /* The steppers are wired further down, next to the size readout they
+         share: this used to reach through _applyInlineStyle, which re-reads the
+         live selection after focusing and so lost the wrapper it had just made,
+         piling a new span on every press. */
       this.toolbar.querySelectorAll('button[data-font]').forEach((btn) => {
         btn.addEventListener('mousedown', (ev) => ev.preventDefault());
         btn.addEventListener('click', () => {
@@ -3587,8 +3568,14 @@
     const sel = window.getSelection();
     if (!sel || !sel.rangeCount) return;
     const r = sel.getRangeAt(0);
-    const host = r.startContainer.parentElement &&
-      r.startContainer.parentElement.closest('.slide-object-text[contenteditable="true"]');
+    /* Resolve the boundary as an element rather than reaching for
+     * parentElement, which points at the wrong thing whenever the boundary IS
+     * an element — selecting a whole block is exactly that, and this quietly
+     * refused to remember it, so the bar then acted on the block instead of the
+     * words. Third place this idiom was wrong; there are no more. */
+    const startEl = elementAtRangeStart(r);
+    const host = startEl && startEl.closest &&
+      startEl.closest('.slide-object-text[contenteditable="true"]');
     /* Only selections inside editable text are of interest. A change caused by
      * focusing a panel field is neither remembered nor allowed to forget. */
     if (!host) return;
@@ -3604,6 +3591,20 @@
     return holder && el.contains(holder) ? lastTextRange : null;
   }
 
+  /* A span whose only child is another span says nothing the inner one does
+   * not. They pile up over a session of pressing A+, and the outer ones are
+   * dead weight in a file someone else has to read. */
+  function collapseWrappers(inner) {
+    let outer = inner && inner.parentElement;
+    while (outer && outer.tagName === 'SPAN' && outer.childNodes.length === 1 &&
+           outer.attributes.length <= 1 &&
+           (outer.attributes.length === 0 || outer.hasAttribute('style'))) {
+      const up = outer.parentElement;
+      outer.parentNode.replaceChild(inner, outer);
+      outer = up && up.tagName === 'SPAN' ? up : null;
+    }
+  }
+
   /* Wrap what is selected in a span carrying the change. surroundContents
    * refuses a range that cuts across element boundaries — "half of this bold
    * word and half of the next" — so the fallback lifts the contents out and
@@ -3613,14 +3614,46 @@
      * nesting another inside it. Ten presses of A+ would otherwise leave ten
      * spans deep, and each press would measure the outermost rather than the
      * innermost. */
-    const holder = range.commonAncestorContainer.nodeType === 1
+    let holder = range.commonAncestorContainer.nodeType === 1
       ? range.commonAncestorContainer
       : range.commonAncestorContainer.parentElement;
-    const reusable = holder && holder.tagName === 'SPAN' &&
-      holder.attributes.length === 1 && holder.hasAttribute('style') &&
+    /* A range that selects exactly one child element is a range about that
+     * element. Reading only the common ancestor missed it: the selection put
+     * back after a wrap has its boundaries in the parent, so the next press saw
+     * the line rather than the wrapper and made another one inside it — four
+     * deep after four presses. */
+    if (holder && range.startContainer === holder && range.endContainer === holder &&
+        range.endOffset - range.startOffset === 1) {
+      const only = holder.childNodes[range.startOffset];
+      if (only && only.nodeType === 1) holder = only;
+    }
+    /* And descend into a wrapper that already covers exactly this run. Without
+     * this, a line that had been styled once was wrapped AROUND its own
+     * wrapper on the next pass — and the inner one wins, so the line looked
+     * like it was refusing to change. */
+    const runText = range.toString();
+    for (let guard = 0; guard < 8 && holder; guard += 1) {
+      const kids = Array.prototype.filter.call(holder.childNodes, function (n) {
+        return n.nodeType !== 3 || n.nodeValue.trim() !== '';
+      });
+      const only = kids.length === 1 ? kids[0] : null;
+      if (only && only.nodeType === 1 && only.tagName === 'SPAN' &&
+          only.textContent === runText && runText !== '') {
+        holder = only;
+        continue;
+      }
+      break;
+    }
+    /* A wrapper this code made is reusable whether or not it has picked up a
+       style yet — requiring one meant a freshly made span was wrapped again on
+       the next press, and the sizes piled up four deep. */
+    const onlyStyle = holder && holder.attributes.length === 0 ||
+      (holder && holder.attributes.length === 1 && holder.hasAttribute('style'));
+    const reusable = holder && holder.tagName === 'SPAN' && onlyStyle &&
       holder.textContent === range.toString() && range.toString() !== '';
     if (reusable) {
       Object.keys(css).forEach(function (k) { holder.style[k] = css[k]; });
+      collapseWrappers(holder);
       const keep = document.createRange();
       keep.selectNodeContents(holder);
       const s0 = window.getSelection();
@@ -3704,6 +3737,53 @@
     return n && n.nodeType === 1 ? n : (n ? n.parentElement : null);
   }
 
+  /* Sizes step through a ladder rather than by a pixel. A pixel is invisible,
+   * which is indistinguishable from broken, and it is not how anyone thinks
+   * about type. */
+  const SIZE_LADDER = [6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 22, 24, 28,
+                       32, 36, 40, 44, 48, 56, 64, 72, 80, 96, 120, 144, 180,
+                       240, 300, 400];
+
+  function nextSize(px, dir) {
+    const at = Math.round(px);
+    let i = 0;
+    while (i < SIZE_LADDER.length - 1 && SIZE_LADDER[i] < at) i += 1;
+    if (dir > 0) {
+      if (SIZE_LADDER[i] > at) return SIZE_LADDER[i];
+      return SIZE_LADDER[Math.min(SIZE_LADDER.length - 1, i + 1)];
+    }
+    if (SIZE_LADDER[i] < at) return SIZE_LADDER[i];
+    return SIZE_LADDER[Math.max(0, i - 1)];
+  }
+
+  /* Each line steps from its own size, so a selection of mixed sizes keeps its
+   * relative shape instead of being flattened to whatever the first line was. */
+  function stepSizeAcross(host, range, dir) {
+    const blocks = leafBlocks(host, range);
+    const parts = blocks.length < 2 ? [range] : blocks.map(function (b) { return clipToRange(b, range); });
+    const made = [];
+    for (let i = parts.length - 1; i >= 0; i--) {
+      if (parts[i].collapsed) continue;
+      const span = wrapRange(parts[i], {});
+      const now = parseFloat(getComputedStyle(span).fontSize) || 16;
+      span.style.fontSize = nextSize(now, dir) + 'px';
+      made.unshift(span);
+    }
+    if (made.length) {
+      const back = document.createRange();
+      /* One wrapper: select its contents so the next press recognises it. */
+      if (made.length === 1) back.selectNodeContents(made[0]);
+      else {
+        back.setStartBefore(made[0]);
+        back.setEndAfter(made[made.length - 1]);
+      }
+      const sel = window.getSelection();
+      sel.removeAllRanges(); sel.addRange(back);
+      lastTextRange = back.cloneRange();
+    }
+    return made;
+  }
+
   function styleAcross(range, css) {
     const host = (range.commonAncestorContainer.nodeType === 1
       ? range.commonAncestorContainer
@@ -3720,8 +3800,12 @@
      * second change — size after face — still has the same words to work on. */
     if (made.length) {
       const back = document.createRange();
-      back.setStartBefore(made[0]);
-      back.setEndAfter(made[made.length - 1]);
+      /* One wrapper: select its contents so the next press recognises it. */
+      if (made.length === 1) back.selectNodeContents(made[0]);
+      else {
+        back.setStartBefore(made[0]);
+        back.setEndAfter(made[made.length - 1]);
+      }
       const sel = window.getSelection();
       sel.removeAllRanges();
       sel.addRange(back);
@@ -3958,6 +4042,66 @@
       paintFontList(fontSel);
       fontSel.addEventListener('change', function () {
         styleTextEl(target(), { fontFamily: fontSel.value }, 'selection');
+      });
+    }
+
+    /* Size lives here: two steps and a number, all against the selection. */
+    const sizeField = bar.querySelector('[data-rte-size]');
+
+    function sizeHost() {
+      const live = editor._activeTextEl && editor._activeTextEl();
+      return live || textEl(selectedObject());
+    }
+
+    function commitSize(dir, absolute) {
+      const host = sizeHost();
+      if (!host) return;
+      const range = liveTextRangeIn(host);
+      const before = host.innerHTML;
+      if (range) {
+        if (absolute) styleAcross(range, { fontSize: absolute + 'px' });
+        else stepSizeAcross(host, range, dir);
+      } else {
+        const now = parseFloat(getComputedStyle(host).fontSize) || 16;
+        host.style.fontSize = (absolute || nextSize(now, dir)) + 'px';
+      }
+      const after = host.innerHTML === before ? null : host.innerHTML;
+      const beforeStyle = before;
+      if (after !== null) {
+        history.push({
+          undo: function () { host.innerHTML = beforeStyle; lastTextRange = null; paintSize(); },
+          redo: function () { host.innerHTML = after; lastTextRange = null; paintSize(); }
+        });
+        updateUndoRedoChrome();
+      } else if (host.style.fontSize) {
+        /* Whole-block change: the markup did not move, the style did. */
+        updateUndoRedoChrome();
+      }
+      paintSize();
+    }
+
+    function paintSize() {
+      if (!sizeField || document.activeElement === sizeField) return;
+      const host = sizeHost();
+      if (!host) return;
+      const range = liveTextRangeIn(host);
+      const from = range ? (elementAtRangeStart(range) || host) : host;
+      const px = parseFloat(getComputedStyle(from).fontSize);
+      sizeField.value = isNaN(px) ? '' : Math.round(px);
+    }
+    bar._paintSize = paintSize;
+
+    bar.querySelectorAll('button[data-size-step]').forEach(function (btn) {
+      btn.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      btn.addEventListener('click', function () {
+        commitSize(parseInt(btn.getAttribute('data-size-step'), 10) > 0 ? 1 : -1);
+      });
+    });
+    if (sizeField) {
+      sizeField.addEventListener('change', function () {
+        const v = parseFloat(sizeField.value);
+        if (isNaN(v)) { paintSize(); return; }
+        commitSize(0, Math.min(FONT_MAX, Math.max(FONT_MIN, v)));
       });
     }
 
@@ -4230,8 +4374,12 @@
           });
           if (made.length) {
             const back = document.createRange();
-            back.setStartBefore(made[0]);
-            back.setEndAfter(made[made.length - 1]);
+            /* One wrapper: select its contents so the next press recognises it. */
+            if (made.length === 1) back.selectNodeContents(made[0]);
+            else {
+              back.setStartBefore(made[0]);
+              back.setEndAfter(made[made.length - 1]);
+            }
             const sel = window.getSelection();
             sel.removeAllRanges(); sel.addRange(back);
             lastTextRange = back.cloneRange();

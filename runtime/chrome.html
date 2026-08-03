@@ -564,15 +564,16 @@
     <select data-rte-font aria-label="Font"><option value="">Inherit</option></select>
   </span>
   <span class="rte-toolbar-group" aria-label="Font size">
-    <button type="button" data-size-step="-1" title="Smaller">A&minus;</button>
-    <button type="button" data-size-step="1" title="Larger">A+</button>
+    <button type="button" data-size-step="-1" title="Smaller" aria-label="Smaller">A&minus;</button>
+    <input type="number" data-rte-size min="6" max="400" step="1" aria-label="Size">
+    <button type="button" data-size-step="1" title="Larger" aria-label="Larger">A+</button>
   </span>
   <span class="rte-toolbar-group" aria-label="Link">
     <button type="button" data-text-link title="Link these words" aria-label="Add a link">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 007.5.5l2-2a5 5 0 00-7-7l-1 1"/><path d="M14 11a5 5 0 00-7.5-.5l-2 2a5 5 0 007 7l1-1"/></svg>
     </button>
-    <button type="button" data-text-unlink title="Take the link off" aria-label="Remove the link">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 007.5.5l1-1"/><path d="M14 11a5 5 0 00-7.5-.5l-1 1"/><path d="M4 4l16 16"/></svg>
+    <button type="button" data-text-unlink title="Remove the link" aria-label="Remove the link">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 15l-1.5 1.5a4 4 0 01-5.5-5.5L4 9.5"/><path d="M15 9l1.5-1.5a4 4 0 015.5 5.5L20 14.5"/><path d="M3 3l18 18"/></svg>
     </button>
   </span>
   <span class="rte-toolbar-group" aria-label="Colour">
