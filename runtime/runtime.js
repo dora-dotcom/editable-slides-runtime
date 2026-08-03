@@ -158,8 +158,10 @@
     _keys(e) {
       // Stood down inside someone else's viewer: the host pages the deck.
       if (!CHROME_ENABLED) return;
+      /* Arrows and space in a panel field move the caret and type a space;
+       * they must not also page the deck. */
+      if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
       if (document.body.classList.contains('deck-edit-mode')) {
-        if (e.target.closest('.slide-object-text[contenteditable="true"]')) return;
         if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') {
           e.preventDefault(); this.goTo(this.current + 1);
         } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
@@ -785,10 +787,13 @@
           const live = sel && sel.rangeCount && !sel.getRangeAt(0).collapsed &&
             textEl.contains(sel.getRangeAt(0).commonAncestorContainer);
           const from = live
-            ? (sel.getRangeAt(0).startContainer.parentElement || textEl)
+            ? (elementAtRangeStart(sel.getRangeAt(0)) || textEl)
             : textEl;
           const cur = parseFloat(getComputedStyle(from).fontSize) || 16;
-          const next = Math.max(8, cur + step) + 'px';
+          /* Bounded at both ends: a run of A− should stop at something legible
+           * rather than at nothing, and a held A+ should not walk off the
+           * slide. */
+          const next = Math.min(FONT_MAX, Math.max(FONT_MIN, cur + step)) + 'px';
           if (live) {
             const beforeHtml = textEl.innerHTML;
             this._applyInlineStyle(textEl, { fontSize: next });
@@ -1622,7 +1627,26 @@
   if (btnExportView) btnExportView.addEventListener('click', function () { exportHtml(true); });
   document.getElementById('btnExportPdf').addEventListener('click', exportPdf);
 
+  /* A key pressed inside one of the panel's own fields belongs to that field.
+   * The guard here only ever checked for typing in slide text, so Backspace in
+   * the font-size box — clearing it to type another number — reached the
+   * delete-the-selection branch and took the object with it. */
+  function inFormField(e) {
+    const t = e.target;
+    return !!(t && t.closest && t.closest('input, textarea, select, [contenteditable="true"]'));
+  }
+
   document.addEventListener('keydown', (e) => {
+    if (inFormField(e) && !(e.target.closest && e.target.closest('.slide-object-text[contenteditable="true"]'))) {
+      /* Let the field have it, except for the save reflex which means the same
+       * thing everywhere. */
+      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        flushSave();
+        saveToFile();
+      }
+      return;
+    }
     const ce = e.target.closest && e.target.closest('.slide-object-text[contenteditable="true"]');
     if (editor.active && (e.key === 'Escape' || e.key === 'Esc')) {
       if (ce) {
@@ -2907,8 +2931,23 @@
     const f = e.target.closest && e.target.closest('[data-text-size]');
     if (!f) return;
     const obj = selectedObject();
+    if (!obj) return;
     const v = parseFloat(f.value);
-    if (obj && !isNaN(v)) styleText(obj, { fontSize: v + 'px' }, 'block');
+    /* A half-typed number is not a size. Nothing happens until it is one, and
+     * an out-of-range one is brought back inside rather than applied. */
+    if (isNaN(v)) return;
+    styleText(obj, { fontSize: Math.min(FONT_MAX, Math.max(FONT_MIN, v)) + 'px' }, 'block');
+  });
+
+  /* Emptying the field means "no size of my own" — the design's own size back.
+   * On change rather than on input, so clearing it in order to type another
+   * number does not flash the text to its default on the way. */
+  document.addEventListener('change', function (e) {
+    const f = e.target.closest && e.target.closest('[data-text-size]');
+    if (!f || f.value.trim() !== '') return;
+    const obj = selectedObject();
+    const el = textEl(obj);
+    if (el) { setStyle(el, 'fontSize', ''); syncInspector(); }
   });
 
 
@@ -3463,10 +3502,10 @@
     lastTextRange = r.collapsed ? null : r.cloneRange();
   });
 
-  function liveTextRange(obj) {
-    if (!lastTextRange) return null;
-    const el = textEl(obj);
-    if (!el) return null;
+  function liveTextRange(obj) { return liveTextRangeIn(textEl(obj)); }
+
+  function liveTextRangeIn(el) {
+    if (!lastTextRange || !el) return null;
     const node = lastTextRange.commonAncestorContainer;
     const holder = node.nodeType === 1 ? node : node.parentElement;
     return holder && el.contains(holder) ? lastTextRange : null;
@@ -3477,6 +3516,26 @@
    * word and half of the next" — so the fallback lifts the contents out and
    * puts them back inside the span, which handles every range. */
   function wrapRange(range, css) {
+    /* If a styling span already covers exactly this run, change it instead of
+     * nesting another inside it. Ten presses of A+ would otherwise leave ten
+     * spans deep, and each press would measure the outermost rather than the
+     * innermost. */
+    const holder = range.commonAncestorContainer.nodeType === 1
+      ? range.commonAncestorContainer
+      : range.commonAncestorContainer.parentElement;
+    const reusable = holder && holder.tagName === 'SPAN' &&
+      holder.attributes.length === 1 && holder.hasAttribute('style') &&
+      holder.textContent === range.toString() && range.toString() !== '';
+    if (reusable) {
+      Object.keys(css).forEach(function (k) { holder.style[k] = css[k]; });
+      const keep = document.createRange();
+      keep.selectNodeContents(holder);
+      const s0 = window.getSelection();
+      s0.removeAllRanges();
+      s0.addRange(keep);
+      lastTextRange = keep.cloneRange();
+      return holder;
+    }
     const span = document.createElement('span');
     Object.keys(css).forEach(function (k) { span.style[k] = css[k]; });
     try {
@@ -3516,6 +3575,7 @@
    * The wraps run last-to-first, because wrapping one line moves nodes and
    * would invalidate the boundary points of the lines before it. */
   const BLOCKISH = 'li, p, div, h1, h2, h3, h4, h5, h6';
+  const FONT_MIN = 6, FONT_MAX = 400;
 
   function leafBlocks(host, range) {
     return Array.prototype.slice.call(host.querySelectorAll(BLOCKISH))
@@ -3537,6 +3597,18 @@
       }
     } catch (e) { /* boundary in another tree — take the whole block */ }
     return r;
+  }
+
+  /* Where the selection starts, as an element. After a wrap the range's start
+   * container is the parent and the offset points at the span that was just
+   * made, so reading parentElement gave the line's size rather than the run's
+   * — and pressing A+ twice produced the same result twice. */
+  function elementAtRangeStart(range) {
+    let n = range.startContainer;
+    if (n && n.nodeType === 1) {
+      n = n.childNodes[range.startOffset] || n.lastChild || n;
+    }
+    return n && n.nodeType === 1 ? n : (n ? n.parentElement : null);
   }
 
   function styleAcross(range, css) {
@@ -3586,9 +3658,16 @@
   }
 
   function styleText(obj, css, scope) {
-    const el = textEl(obj);
+    styleTextEl(textEl(obj), css, scope);
+  }
+
+  /* Which element is being styled matters more than which object is selected.
+   * A table's cells are all .slide-object-text, so resolving from the object
+   * picked the first cell — type in the third and the font changed in the
+   * first. The bar works against the element the caret is actually in. */
+  function styleTextEl(el, css, scope) {
     if (!el) return;
-    const range = scope === 'block' ? null : liveTextRange(obj);
+    const range = scope === 'block' ? null : liveTextRangeIn(el);
     if (range) {
       const before = el.innerHTML;
       styleAcross(range, css);
@@ -3774,35 +3853,34 @@
     const bar = document.getElementById('rteToolbar');
     if (!bar) return;
 
+    /* The element the caret is in, which in a table is one cell of many. */
     function target() {
-      const obj = selectedObject();
-      return obj && textEl(obj) ? obj : null;
+      const live = editor._activeTextEl && editor._activeTextEl();
+      if (live) return live;
+      return textEl(selectedObject());
     }
 
     const fontSel = bar.querySelector('[data-rte-font]');
     if (fontSel) {
       paintFontList(fontSel);
       fontSel.addEventListener('change', function () {
-        const obj = target();
-        if (obj) styleText(obj, { fontFamily: fontSel.value }, 'selection');
+        styleTextEl(target(), { fontFamily: fontSel.value }, 'selection');
       });
     }
 
     const colour = bar.querySelector('[data-rte-colour]');
     if (colour) {
       colour.addEventListener('input', function () {
-        const obj = target();
-        if (obj) styleText(obj, { color: colour.value }, 'selection');
+        styleTextEl(target(), { color: colour.value }, 'selection');
       });
     }
     const reset = bar.querySelector('[data-rte-colour-reset]');
     if (reset) {
       reset.addEventListener('mousedown', function (e) { e.preventDefault(); });
       reset.addEventListener('click', function () {
-        const obj = target();
-        const el = obj && textEl(obj);
+        const el = target();
         if (!el) return;
-        const range = liveTextRange(obj);
+        const range = liveTextRangeIn(el);
         if (!range) { setStyle(el, 'color', ''); return; }
         /* Putting the design's colour back over a few words means dropping
          * the override, not painting another colour on top.
