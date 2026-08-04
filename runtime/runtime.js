@@ -221,7 +221,14 @@
       /* Eight, not one. A single corner meant an object could only ever grow
        * down and to the right — to trim the top of a box you had to move it as
        * well, and get both right. */
-      if (!obj.querySelector('.slide-object-resize')) {
+      /* All eight or none: a deck carrying handles from an older runtime — and
+       * they were carried, because exports never stripped them — would
+       * otherwise keep its single stale one and never get the rest. */
+      const have = obj.querySelectorAll('.slide-object-resize');
+      const complete = have.length === RESIZE_DIRS.length && RESIZE_DIRS.every(
+        (d) => obj.querySelector('.slide-object-resize[data-resize="' + d + '"]'));
+      if (!complete) {
+        have.forEach((h) => h.remove());
         RESIZE_DIRS.forEach((dir) => {
           const btn = document.createElement('button');
           btn.type = 'button';
@@ -374,7 +381,8 @@
 
         if (e.target.closest('.slide-object-rotate')) {
           e.preventDefault();
-          if (this.selected.size === 1) this._startRotate(e, obj);
+          e.stopPropagation();
+          this._startRotate(e, obj);
           return;
         }
 
@@ -613,6 +621,7 @@
     _startRotate(e, obj) {
       const slide = obj.closest('section.slide');
       if (!slide) return;
+      if (!this.selected.has(obj)) this._selectOnly(obj);
       const r = obj.getBoundingClientRect();
       this._rotateState = {
         el: obj,

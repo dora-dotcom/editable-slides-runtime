@@ -217,39 +217,52 @@ body.deck-edit-mode .slide-object { outline-color: color-mix(in srgb, var(--deck
 }
 body.deck-edit-mode .slide-object-move { display: flex; }
 
-/* Eight handles and a stub to turn by. Small, because they sit on top of the
-   work; the accent, because they are the tool speaking. */
+/* Eight handles and a stub to turn by. The accent, because they are the tool
+   speaking — and sized against the screen rather than the slide.
+   The canvas is zoomed to fit, so an 11px handle came out at six or seven
+   real pixels: present, correct, and too small to see or to hit. Everything
+   here divides by the zoom so a handle is the same size to the hand at every
+   zoom level. */
 .slide-object-resize {
-  position: absolute; width: 11px; height: 11px;
-  border-radius: 3px; background: var(--deck-chrome-accent);
-  display: none; z-index: 4; border: 1px solid var(--deck-chrome-surface, #fff);
+  --h: calc(11px / var(--canvas-zoom, 1));
+  --off: calc(-6px / var(--canvas-zoom, 1));
+  position: absolute; width: var(--h); height: var(--h);
+  border-radius: calc(3px / var(--canvas-zoom, 1));
+  background: var(--deck-chrome-accent);
+  display: none; z-index: 4;
+  border: calc(1px / var(--canvas-zoom, 1)) solid var(--deck-chrome-surface, #fff);
   padding: 0; box-sizing: border-box;
-  box-shadow: 0 0 0 1px rgba(0,0,0,0.18);
+  box-shadow: 0 0 0 calc(1px / var(--canvas-zoom, 1)) rgba(0,0,0,0.18);
 }
-.slide-object-resize[data-resize="nw"] { left: -6px;  top: -6px;    cursor: nwse-resize; }
-.slide-object-resize[data-resize="n"]  { left: 50%;   top: -6px;    margin-left: -5.5px; cursor: ns-resize; }
-.slide-object-resize[data-resize="ne"] { right: -6px; top: -6px;    cursor: nesw-resize; }
-.slide-object-resize[data-resize="e"]  { right: -6px; top: 50%;     margin-top: -5.5px;  cursor: ew-resize; }
-.slide-object-resize[data-resize="se"] { right: -6px; bottom: -6px; cursor: nwse-resize; }
-.slide-object-resize[data-resize="s"]  { left: 50%;   bottom: -6px; margin-left: -5.5px; cursor: ns-resize; }
-.slide-object-resize[data-resize="sw"] { left: -6px;  bottom: -6px; cursor: nesw-resize; }
-.slide-object-resize[data-resize="w"]  { left: -6px;  top: 50%;     margin-top: -5.5px;  cursor: ew-resize; }
+.slide-object-resize[data-resize="nw"] { left: var(--off);  top: var(--off); }
+.slide-object-resize[data-resize="n"] { left: 50%; top: var(--off); margin-left: calc(var(--h) / -2); }
+.slide-object-resize[data-resize="ne"] { right: var(--off); top: var(--off); }
+.slide-object-resize[data-resize="e"] { right: var(--off); top: 50%; margin-top: calc(var(--h) / -2); }
+.slide-object-resize[data-resize="se"] { right: var(--off); bottom: var(--off); }
+.slide-object-resize[data-resize="s"] { left: 50%; bottom: var(--off); margin-left: calc(var(--h) / -2); }
+.slide-object-resize[data-resize="sw"] { left: var(--off);  bottom: var(--off); }
+.slide-object-resize[data-resize="w"] { left: var(--off);  top: 50%; margin-top: calc(var(--h) / -2); }
 body.deck-edit-mode .slide-object.is-selected .slide-object-resize { display: block; }
 
 /* Round, and held off the top edge on a short stalk, so it never reads as one
    more thing to drag the corner with. */
 .slide-object-rotate {
-  position: absolute; left: 50%; top: -30px; margin-left: -6px;
-  width: 12px; height: 12px; border-radius: 50%;
+  --r: calc(13px / var(--canvas-zoom, 1));
+  position: absolute; left: 50%;
+  top: calc(-30px / var(--canvas-zoom, 1));
+  margin-left: calc(var(--r) / -2);
+  width: var(--r); height: var(--r); border-radius: 50%;
   background: var(--deck-chrome-surface, #fff);
-  border: 2px solid var(--deck-chrome-accent);
+  border: calc(2px / var(--canvas-zoom, 1)) solid var(--deck-chrome-accent);
   display: none; z-index: 5; padding: 0; box-sizing: border-box;
   cursor: grab;
 }
 .slide-object-rotate:active { cursor: grabbing; }
 .slide-object-rotate::before {
   content: ''; position: absolute; left: 50%; top: 100%;
-  width: 1px; height: 18px; margin-left: -0.5px;
+  width: calc(1px / var(--canvas-zoom, 1));
+  height: calc(18px / var(--canvas-zoom, 1));
+  margin-left: calc(-0.5px / var(--canvas-zoom, 1));
   background: var(--deck-chrome-accent); opacity: 0.55;
 }
 body.deck-edit-mode .slide-object.is-selected .slide-object-rotate { display: block; }
