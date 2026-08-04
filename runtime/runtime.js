@@ -498,22 +498,46 @@
       try { e.target.setPointerCapture(e.pointerId); } catch (_) {}
     }
 
+    /* One space for the whole gesture: on-screen pixels, the same space the
+     * pointer and the slide rect are already in. Percent goes in at the end,
+     * once.
+     *
+     * Bento does not do this arithmetic at all — it hands drag, resize and
+     * rotate to Moveable, and writes back the position the library reports. It
+     * can afford a library; a runtime that ships inside every deck cannot. So
+     * the maths is here, but it is done in one unit, because three separate
+     * bugs this week were all the same mistake: mixing layout pixels with
+     * screen pixels, or percent-of-width with percent-of-height.
+     *
+     * offsetLeft/Top/Width/Height are read rather than the bounding rect
+     * because they ignore transforms: a rotated element's rect is the box
+     * AROUND it, which is bigger than the element and would make the first
+     * move jump. */
+    _resizeFrame(obj, slide, sr) {
+      /* The style first, because it is exact: offsetLeft and offsetWidth are
+       * rounded to whole pixels, and starting a gesture from a rounded box
+       * leaves the opposite edge a pixel or two off every time. offset* is the
+       * fallback for an object the document positioned some other way, and it
+       * is transform-independent, which the bounding rect is not. */
+      const k = slide.offsetWidth ? sr.width / slide.offsetWidth : 1;
+      const pl = pct(obj, 'left'), pt = pct(obj, 'top');
+      const pw = pct(obj, 'width'), ph = pct(obj, 'height');
+      return {
+        k,
+        l: pl == null ? obj.offsetLeft * k : (pl / 100) * sr.width,
+        t: pt == null ? obj.offsetTop * k : (pt / 100) * sr.height,
+        w: pw == null ? obj.offsetWidth * k : (pw / 100) * sr.width,
+        h: ph == null ? obj.offsetHeight * k : (ph / 100) * sr.height
+      };
+    }
+
     _startResize(e, obj) {
       const slide = obj.closest('section.slide');
       if (!slide) return;
       const sr = this._slideRect(slide);
       const handle = e.target.closest('.slide-object-resize');
       const dir = (handle && handle.getAttribute('data-resize')) || 'se';
-      /* Measure from the style, not from the box: a rotated element's
-       * bounding rect is the axis-aligned box AROUND it, which is bigger than
-       * the element and would make every drag jump. */
-      /* From the inline style, not the computed one: a positioned element's
-       * computed left is resolved to pixels, so asking for a percentage there
-       * always came back empty and every drag started from zero. */
-      const left = pct(obj, 'left') || 0;
-      const top = pct(obj, 'top') || 0;
-      const wPct = pct(obj, 'width');
-      const hPct = pct(obj, 'height');
+      const f = this._resizeFrame(obj, slide, sr);
       this._resizeState = {
         slide,
         el: obj,
@@ -522,16 +546,14 @@
         angle: objectAngle(obj),
         startX: e.clientX,
         startY: e.clientY,
-        startW: (wPct == null ? obj.getBoundingClientRect().width / sr.width * 100 : wPct),
-        startH: (hPct == null ? obj.getBoundingClientRect().height / sr.height * 100 : hPct),
-        startL: left,
-        startT: top,
+        w0: f.w,
+        h0: f.h,
+        cx0: f.l + f.w / 2,
+        cy0: f.t + f.h / 2,
         beforeW: obj.style.width,
         beforeH: obj.style.height,
         beforeL: obj.style.left,
-        beforeT: obj.style.top,
-        hadWidthPct: wPct != null,
-        hadHeightPct: hPct != null
+        beforeT: obj.style.top
       };
       window.addEventListener('pointermove', this._onResizeMove, true);
       window.addEventListener('pointerup', this._onResizeUp, true);
@@ -543,48 +565,35 @@
       if (!this._resizeState) return;
       const st = this._resizeState;
       const sr = st.sr;
-      /* Percent throughout, so a resize means the same thing at any zoom and
-       * on any screen. */
-      const dxPct = (e.clientX - st.startX) / sr.width * 100;
-      const dyPct = (e.clientY - st.startY) / sr.height * 100;
+      const dx = e.clientX - st.startX;
+      const dy = e.clientY - st.startY;
 
-      /* A turned object is dragged in its own frame: pulling its right edge
-       * has to widen it, whichever way "right" is currently pointing. */
+      /* A turned object is dragged in its own frame: pulling the edge that is
+       * currently its right widens it, wherever "right" is pointing. */
       const a = st.angle * Math.PI / 180;
       const cos = Math.cos(a), sin = Math.sin(a);
-      const lx = dxPct * cos + dyPct * sin;
-      const ly = -dxPct * sin + dyPct * cos;
+      const lx = dx * cos + dy * sin;
+      const ly = -dx * sin + dy * cos;
 
-      const minW = RESIZE_MIN_FRAC * 100;
-      const minH = RESIZE_MIN_FRAC * 100;
-      let w = st.startW, h = st.startH, mx = 0, my = 0;
+      const minPx = Math.min(sr.width, sr.height) * RESIZE_MIN_FRAC;
+      let w = st.w0, h = st.h0, mx = 0, my = 0;
 
-      if (st.dir.indexOf('e') !== -1) {
-        w = Math.max(minW, st.startW + lx);
-        mx = (w - st.startW) / 2;
-      } else if (st.dir.indexOf('w') !== -1) {
-        w = Math.max(minW, st.startW - lx);
-        mx = -(w - st.startW) / 2;
-      }
-      if (st.dir.indexOf('s') !== -1) {
-        h = Math.max(minH, st.startH + ly);
-        my = (h - st.startH) / 2;
-      } else if (st.dir.indexOf('n') !== -1) {
-        h = Math.max(minH, st.startH - ly);
-        my = -(h - st.startH) / 2;
-      }
+      if (st.dir.indexOf('e') !== -1) { w = Math.max(minPx, st.w0 + lx); mx = (w - st.w0) / 2; }
+      else if (st.dir.indexOf('w') !== -1) { w = Math.max(minPx, st.w0 - lx); mx = -(w - st.w0) / 2; }
+      if (st.dir.indexOf('s') !== -1) { h = Math.max(minPx, st.h0 + ly); my = (h - st.h0) / 2; }
+      else if (st.dir.indexOf('n') !== -1) { h = Math.max(minPx, st.h0 - ly); my = -(h - st.h0) / 2; }
 
-      /* The centre moves by half of what the edge did — back in screen axes,
-       * because that is where left and top live. */
-      const cdx = mx * cos - my * sin;
-      const cdy = mx * sin + my * cos;
-      const cx = st.startL + st.startW / 2 + cdx;
-      const cy = st.startT + st.startH / 2 + cdy;
+      /* The centre moves by half of what the edge did, turned back into screen
+       * axes. Both terms are pixels here, which is the whole point: the version
+       * that mixed percent-of-width with percent-of-height drifted on every
+       * drag, because those are different lengths unless the slide is square. */
+      const cx = st.cx0 + (mx * cos - my * sin);
+      const cy = st.cy0 + (mx * sin + my * cos);
 
-      st.el.style.width = w + '%';
-      st.el.style.height = h + '%';
-      st.el.style.left = (cx - w / 2) + '%';
-      st.el.style.top = (cy - h / 2) + '%';
+      st.el.style.width = (w / sr.width * 100) + '%';
+      st.el.style.height = (h / sr.height * 100) + '%';
+      st.el.style.left = ((cx - w / 2) / sr.width * 100) + '%';
+      st.el.style.top = ((cy - h / 2) / sr.height * 100) + '%';
     }
 
     _onResizeUp() {
