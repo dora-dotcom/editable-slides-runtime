@@ -274,6 +274,18 @@ body.deck-edit-mode .slide-object.is-selected {
   box-shadow: none;
 }
 
+/* Markdown typed into a text box makes real elements, and a deck's own CSS has
+   probably never met a <code> or an <s>. Enough that code reads as code, in the
+   deck's own colour, without deciding for the deck what code should look like —
+   and low enough in specificity that a deck which does have an opinion wins. */
+.slide-object-text code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  padding: 0.05em 0.3em;
+  border-radius: 0.25em;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
 .slide-object-text {
   min-height: 1.2em; outline: none; font-size: var(--body-size);
   width: 100%; box-sizing: border-box;
@@ -1358,6 +1370,15 @@ body.deck-presenting .deck-btn-view-present { display: none; }
   white-space: nowrap;
 }
 .chart-words .chart-cat { bottom: 2%; opacity: 0.75; }
+/* Axis numbers sit in the left gutter the renderer reserved for them, centred
+   on their own gridline rather than hanging below it. */
+.chart-words .chart-axis {
+  position: absolute;
+  transform: translateY(-50%);
+  font-size: clamp(6px, 1.9cqw, 11px);
+  line-height: 1; white-space: nowrap;
+  opacity: 0.6; font-variant-numeric: tabular-nums;
+}
 .chart-words .chart-val { font-variant-numeric: tabular-nums; opacity: 0.9; }
 .chart-words .chart-legend {
   position: absolute; left: 0; right: 0; top: 0;

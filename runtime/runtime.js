@@ -693,7 +693,12 @@
        * everybody already knows. */
       if (obj && (e.shiftKey || e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        this._toggleSel(obj);
+        /* Adding to a selection adds the whole group, the way selecting one
+         * does — a group that could be half-selected is not a group. */
+        const also = e.altKey ? [obj] : groupMembers(obj);
+        const on = this.selected.has(obj);
+        also.forEach((m) => { if (on) { m.classList.remove('is-selected'); this.selected.delete(m); } else this._addSel(m); });
+        if (typeof syncInspector === 'function') syncInspector();
         return;
       }
 
@@ -721,7 +726,13 @@
          * Nothing here may call preventDefault on the way past: cancelling a
          * pointerdown suppresses the mouse events that come after it, and those
          * are what the gesture library listens to. */
-        if (!this.selected.has(obj)) this._selectOnly(obj);
+        if (!this.selected.has(obj)) {
+          /* A group selects as one. Alt reaches inside it, which is the only way
+           * to change one piece without taking the group apart. */
+          const members = e.altKey ? [obj] : groupMembers(obj);
+          this.clearSelection();
+          members.forEach((m) => this._addSel(m));
+        }
         return;
       }
 
@@ -1894,10 +1905,25 @@
       flushSave();
       saveToFile();
     }
+    /* ⌘Z immediately after a markdown conversion means "I meant those
+     * characters", so it puts them back and the browser's own undo never sees
+     * the key. Any other ⌘Z while typing is the browser's, which is the one
+     * that knows what you typed. */
+    if (editor.active && ce && (e.ctrlKey || e.metaKey) && !e.shiftKey &&
+        (e.key === 'z' || e.key === 'Z')) {
+      if (mdUndo()) { e.preventDefault(); return; }
+    }
     if (editor.active && !ce && (e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
       e.preventDefault();
       if (e.shiftKey) history.redo();
       else history.undo();
+    }
+    if (editor.active && !ce && (e.ctrlKey || e.metaKey) && (e.key === 'g' || e.key === 'G')) {
+      /* The browser's own ⌘G is "find again", which has nothing to do on a slide
+       * you are editing. */
+      e.preventDefault();
+      if (e.shiftKey) ungroupSelection();
+      else groupSelection();
     }
     if (editor.active && !ce && (e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
       e.preventDefault();
@@ -2198,139 +2224,418 @@
    * it — which is why this chart had no labels at all. The words are laid over
    * the top as HTML instead, positioned in percent, so they stay upright and
    * take the deck's own font. */
-  function renderChart(type, series, opts) {
+  /* ---------- Chart colour ----------
+   *
+   * A multi-series chart used to be one colour at falling opacity, which looks
+   * tidy and is unreadable: three tints of the same green in a legend are three
+   * things nobody can tell apart at the back of a room.
+   *
+   * So series get distinct colours, derived from the deck's own accent rather
+   * than taken from a stock palette — the algorithm is ported from Bento's
+   * model.ts deriveChartPalette (MIT): the accent, a cool counterpart about 190°
+   * away, and a light and deep tint of each. Any deck gets a chart in its own
+   * voice without being asked to choose six colours. A deck that does want to
+   * choose can, with data-chart-colours.
+   */
+  function cssColourToHex(v) {
+    const value = String(v || '').trim();
+    if (/^#[0-9a-f]{6}$/i.test(value)) return value;
+    if (/^#[0-9a-f]{3}$/i.test(value)) {
+      return '#' + value[1] + value[1] + value[2] + value[2] + value[3] + value[3];
+    }
+    /* Anything else — rgb(), a keyword, a var() that resolved — is handed to the
+     * browser to normalise, which is the only parser guaranteed to agree with
+     * what the deck will actually paint. */
+    try {
+      const probe = document.createElement('span');
+      probe.style.color = value;
+      probe.style.display = 'none';
+      document.body.appendChild(probe);
+      const rgb = getComputedStyle(probe).color;
+      probe.remove();
+      const m = rgb.match(/\d+(\.\d+)?/g);
+      if (!m) return null;
+      return '#' + m.slice(0, 3).map(function (x) {
+        return ('0' + Math.round(parseFloat(x)).toString(16)).slice(-2);
+      }).join('');
+    } catch (e) { return null; }
+  }
+
+  function hexToHsl(hex) {
+    const m = hex.replace('#', '');
+    const r = parseInt(m.slice(0, 2), 16) / 255;
+    const g = parseInt(m.slice(2, 4), 16) / 255;
+    const b = parseInt(m.slice(4, 6), 16) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0, sat = 0;
+    const l = (max + min) / 2;
+    if (max !== min) {
+      const d = max - min;
+      sat = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h *= 60;
+    }
+    return [h, sat * 100, l * 100];
+  }
+
+  function hslToHex(h, sat, l) {
+    h = ((h % 360) + 360) % 360;
+    sat = Math.max(0, Math.min(100, sat)) / 100;
+    l = Math.max(0, Math.min(100, l)) / 100;
+    const c = (1 - Math.abs(2 * l - 1)) * sat;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const mm = l - c / 2;
+    let r = 0, g = 0, b = 0;
+    if (h < 60) { r = c; g = x; } else if (h < 120) { r = x; g = c; }
+    else if (h < 180) { g = c; b = x; } else if (h < 240) { g = x; b = c; }
+    else if (h < 300) { r = x; b = c; } else { r = c; b = x; }
+    const to = function (v) { return ('0' + Math.round((v + mm) * 255).toString(16)).slice(-2); };
+    return '#' + to(r) + to(g) + to(b);
+  }
+
+  function derivePalette(hex) {
+    const hsl = hexToHsl(hex);
+    const h = hsl[0], sat = hsl[1], l = hsl[2];
+    const cool = h + 190;
+    return [
+      hex,
+      hslToHex(cool, Math.max(20, sat * 0.5), Math.min(56, Math.max(44, l))),
+      hslToHex(h, sat * 0.92, Math.min(84, l + 14)),
+      hslToHex(cool, Math.max(16, sat * 0.38), Math.min(74, l + 20)),
+      hslToHex(h, sat, Math.max(28, l - 16)),
+      hslToHex(cool, Math.max(24, sat * 0.55), Math.max(26, l - 6))
+    ];
+  }
+
+  /* The colours this chart will use, in series order. */
+  function chartPalette(obj, o) {
+    const listed = (o.colours || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+    if (listed.length) return listed;
+    const base = cssColourToHex(o.colour) ||
+      cssColourToHex(obj ? (getComputedStyle(obj).getPropertyValue('--deck-chrome-accent') || getComputedStyle(obj).color) : '');
+    /* No accent to work from — an unstyled deck, or a colour the browser could
+     * not resolve. One colour is honest; six invented ones are not. */
+    if (!base) return [o.colour || CHART_FILL];
+    return derivePalette(base);
+  }
+
+  /* Round numbers a person would have chosen: 0/25/50/75/100 rather than
+   * 0/22.4/44.8. Ported from Bento's charts.ts niceTicks (MIT). */
+  function niceTicks(min, max, target) {
+    if (max === min) max = min + 1;
+    const span = max - min;
+    const t = target || 5;
+    const step0 = Math.pow(10, Math.floor(Math.log10(span / t)));
+    const err = span / t / step0;
+    const step = step0 * (err >= 7.5 ? 10 : err >= 3.5 ? 5 : err >= 1.5 ? 2 : 1);
+    const lo = Math.floor(min / step) * step;
+    const hi = Math.ceil(max / step) * step;
+    const out = [];
+    for (let v = lo; v <= hi + step / 2; v += step) out.push(Math.round(v * 1e6) / 1e6);
+    return out;
+  }
+
+  function chartNums(series) {
+    return series.reduce(function (a, d) {
+      return a.concat((d.values || [d.value]).filter(function (v) { return typeof v === 'number'; }));
+    }, []);
+  }
+
+  /* The value axis: where zero sits, and the ticks along it. Bars grow from
+   * zero rather than from the bottom of the box, so a negative number dips
+   * below the line instead of being drawn upside down. */
+  function chartScale(series, stacked) {
+    let nums = chartNums(series);
+    if (stacked) {
+      /* Stacked columns are as tall as their total, so the scale has to be. */
+      nums = series.map(function (d) {
+        return (d.values || [d.value]).reduce(function (a, v) { return a + (v > 0 ? v : 0); }, 0);
+      }).concat(series.map(function (d) {
+        return (d.values || [d.value]).reduce(function (a, v) { return a + (v < 0 ? v : 0); }, 0);
+      }));
+    }
+    if (!nums.length) nums = [0, 1];
+    const ticks = niceTicks(Math.min(0, Math.min.apply(null, nums)), Math.max.apply(null, nums));
+    return { lo: ticks[0], hi: ticks[ticks.length - 1], ticks: ticks };
+  }
+
+  /* A path through the points, curved. Quadratic segments that meet at the
+   * midpoints, which stays inside the data's own range — a Catmull-Rom spline
+   * overshoots, and a chart that draws a peak the data does not have is worse
+   * than one with corners. */
+  function smoothPath(pts) {
+    if (pts.length < 3) return 'M' + pts.map(function (p) { return p[0] + ',' + p[1]; }).join(' L');
+    let d = 'M' + pts[0][0] + ',' + pts[0][1];
+    for (let i = 1; i < pts.length - 1; i++) {
+      const mx = (pts[i][0] + pts[i + 1][0]) / 2;
+      const my = (pts[i][1] + pts[i + 1][1]) / 2;
+      d += ' Q' + pts[i][0].toFixed(2) + ',' + pts[i][1].toFixed(2) + ' ' + mx.toFixed(2) + ',' + my.toFixed(2);
+    }
+    const last = pts[pts.length - 1];
+    d += ' L' + last[0].toFixed(2) + ',' + last[1].toFixed(2);
+    return d;
+  }
+
+  function renderChart(type, series, opts, obj) {
     if (!series.length) return '';
     const o = opts || {};
     const W = 100, H = 62, PAD = 2;
     const n = seriesCount(series);
-    const all = series.reduce(function (a, d) { return a.concat(d.values || [d.value]); }, []);
-    const max = Math.max.apply(null, all).valueOf() || 1;
-    const tint = function (i) { return (1 - i * 0.22).toFixed(2); };
-    const fill = o.colour || CHART_FILL;
+    const pal = chartPalette(obj, o);
+    const colour = function (i) { return pal[i % pal.length]; };
     /* A legend is drawn across the top, so the plot has to give it room —
      * without this the tallest column ran under the key and its own value
      * label landed on top of it. */
     const TOP = o.legend ? 11 : 0;
+    /* Axis numbers need a gutter on the left, and only when they are shown. */
+    const LEFT = o.axis ? 12 : PAD;
     const RISE = H - PAD * 3 - TOP;
     let body = '';
 
     if (type === 'pie') {
-      const total = series.reduce(function (s, d) { return s + (d.values ? d.values[0] : d.value); }, 0) || 1;
+      const total = series.reduce(function (s, d) { return s + Math.abs(d.values ? d.values[0] : d.value); }, 0) || 1;
       let a0 = -Math.PI / 2;
       const cx = 50, cy = 31, r = 28;
+      /* A doughnut is a pie with a hole, and the hole is where a total goes. */
+      const inner = o.donut ? r * 0.55 : 0;
       series.forEach(function (d, i) {
-        const v = d.values ? d.values[0] : d.value;
+        const v = Math.abs(d.values ? d.values[0] : d.value);
         const a1 = a0 + (v / total) * Math.PI * 2;
         const large = a1 - a0 > Math.PI ? 1 : 0;
         const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
         const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
-        body += '<path d="M' + cx + ',' + cy + ' L' + x0.toFixed(2) + ',' + y0.toFixed(2) +
-          ' A' + r + ',' + r + ' 0 ' + large + ' 1 ' + x1.toFixed(2) + ',' + y1.toFixed(2) + ' Z" ' +
-          'fill="' + fill + '" fill-opacity="' + (1 - i * 0.16).toFixed(2) + '" ' +
-          'stroke="' + CHART_INK + '" stroke-width="0.4"/>';
+        let d1;
+        if (inner) {
+          const ix0 = cx + inner * Math.cos(a1), iy0 = cy + inner * Math.sin(a1);
+          const ix1 = cx + inner * Math.cos(a0), iy1 = cy + inner * Math.sin(a0);
+          d1 = 'M' + x0.toFixed(2) + ',' + y0.toFixed(2) +
+            ' A' + r + ',' + r + ' 0 ' + large + ' 1 ' + x1.toFixed(2) + ',' + y1.toFixed(2) +
+            ' L' + ix0.toFixed(2) + ',' + iy0.toFixed(2) +
+            ' A' + inner.toFixed(2) + ',' + inner.toFixed(2) + ' 0 ' + large + ' 0 ' + ix1.toFixed(2) + ',' + iy1.toFixed(2) + ' Z';
+        } else {
+          d1 = 'M' + cx + ',' + cy + ' L' + x0.toFixed(2) + ',' + y0.toFixed(2) +
+            ' A' + r + ',' + r + ' 0 ' + large + ' 1 ' + x1.toFixed(2) + ',' + y1.toFixed(2) + ' Z';
+        }
+        body += '<path d="' + d1 + '" fill="' + colour(i) + '" ' +
+          'stroke="' + CHART_INK + '" stroke-width="0.4" stroke-opacity="0.25"/>';
         a0 = a1;
       });
       return body;
     }
 
-    if (o.grid) {
-      for (let g = 1; g <= 4; g++) {
-        const y = (H - PAD) - (g / 4) * RISE;
-        body += '<line x1="' + PAD + '" y1="' + y.toFixed(2) + '" x2="' + (W - PAD) + '" y2="' + y.toFixed(2) +
-          '" stroke="' + CHART_INK + '" stroke-width="0.25" stroke-opacity="0.25" vector-effect="non-scaling-stroke"/>';
-      }
+    const scale = chartScale(series, type !== 'line' && type !== 'scatter' && o.stack);
+    const yOf = function (v) {
+      const span = (scale.hi - scale.lo) || 1;
+      return (H - PAD) - ((v - scale.lo) / span) * RISE;
+    };
+    const zero = yOf(Math.max(scale.lo, Math.min(0, scale.hi)));
+
+    /* Scatter has a value axis across the bottom too: the label is the x. */
+    /* "10 8, 15 12" is a scatter's natural data: the label is the x. Switching a
+     * chart that was written for columns to a scatter should still draw
+     * something, so a label that is not a number falls back to its position. */
+    const xs = type === 'scatter'
+      ? series.map(function (d, i) {
+        const v = parseFloat(d.label);
+        return isFinite(v) ? v : i + 1;
+      })
+      : null;
+    const xscale = xs ? (function () {
+      const ticks = niceTicks(Math.min.apply(null, xs.concat([0])), Math.max.apply(null, xs));
+      return { lo: ticks[0], hi: ticks[ticks.length - 1], ticks: ticks };
+    })() : null;
+    const xOf = function (v) {
+      const span = (xscale.hi - xscale.lo) || 1;
+      return LEFT + ((v - xscale.lo) / span) * (W - PAD - LEFT);
+    };
+
+    if (o.grid || o.axis) {
+      /* Gridlines land on the same round numbers the labels show, so the two
+       * cannot disagree. */
+      scale.ticks.forEach(function (t) {
+        const y = yOf(t);
+        body += '<line x1="' + LEFT + '" y1="' + y.toFixed(2) + '" x2="' + (W - PAD) + '" y2="' + y.toFixed(2) +
+          '" stroke="' + CHART_INK + '" stroke-width="0.25" stroke-opacity="' + (t === 0 ? '0.45' : '0.2') +
+          '" vector-effect="non-scaling-stroke"/>';
+      });
     }
 
-    const step = (W - PAD * 2) / series.length;
-    if (type === 'line') {
-      for (let si = 0; si < n; si++) {
-        const pts = series.map(function (d, i) {
-          const raw = (d.values || [d.value])[si];
-          const v = raw === undefined ? 0 : raw;
-          const x = PAD + step * (i + 0.5);
-          const y = H - PAD - (v / max) * RISE;
-          return x.toFixed(2) + ',' + y.toFixed(2);
-        }).join(' ');
-        body += '<polyline points="' + pts + '" fill="none" stroke="' + fill +
-          '" stroke-opacity="' + tint(si) + '" stroke-width="1.6" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>';
-        series.forEach(function (d, i) {
-          const v = (d.values || [d.value])[si];
+    const step = (W - PAD - LEFT) / series.length;
+    if (type === 'scatter') {
+      series.forEach(function (d, i) {
+        const x = xs[i];
+        (d.values || [d.value]).forEach(function (v, si) {
           if (v === undefined) return;
-          const x = PAD + step * (i + 0.5);
-          const y = H - PAD - (v / max) * RISE;
-          body += '<circle cx="' + x.toFixed(2) + '" cy="' + y.toFixed(2) + '" r="1.4" fill="' +
-            fill + '" fill-opacity="' + tint(si) + '"/>';
+          body += '<circle cx="' + xOf(x).toFixed(2) + '" cy="' + yOf(v).toFixed(2) +
+            '" r="1.8" fill="' + colour(si) + '" fill-opacity="0.85"/>';
+        });
+      });
+    } else if (type === 'line') {
+      for (let si = 0; si < n; si++) {
+        const pts = [];
+        series.forEach(function (d, i) {
+          const raw = (d.values || [d.value])[si];
+          if (raw === undefined) return;
+          pts.push([LEFT + step * (i + 0.5), yOf(raw)]);
+        });
+        if (!pts.length) continue;
+        const path = o.smooth ? smoothPath(pts)
+          : 'M' + pts.map(function (p) { return p[0].toFixed(2) + ',' + p[1].toFixed(2); }).join(' L');
+        /* The area is drawn first so the line sits on top of its own fill. */
+        if (o.area) {
+          body += '<path d="' + path + ' L' + pts[pts.length - 1][0].toFixed(2) + ',' + zero.toFixed(2) +
+            ' L' + pts[0][0].toFixed(2) + ',' + zero.toFixed(2) + ' Z" fill="' + colour(si) +
+            '" fill-opacity="0.18" stroke="none"/>';
+        }
+        body += '<path d="' + path + '" fill="none" stroke="' + colour(si) +
+          '" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>';
+        pts.forEach(function (p) {
+          body += '<circle cx="' + p[0].toFixed(2) + '" cy="' + p[1].toFixed(2) + '" r="1.4" fill="' + colour(si) + '"/>';
         });
       }
     } else {
       series.forEach(function (d, i) {
         const vals = d.values || [d.value];
+        if (o.stack) {
+          /* One column per category, the series piled up inside it. */
+          const bw = step * 0.62;
+          const x0 = LEFT + step * i + (step - bw) / 2;
+          let up = 0, down = 0;
+          for (let si = 0; si < n; si++) {
+            const v = vals[si];
+            if (v === undefined) continue;
+            const from = v >= 0 ? up : down;
+            const to = from + v;
+            if (v >= 0) up = to; else down = to;
+            const y0 = yOf(Math.max(from, to)), y1 = yOf(Math.min(from, to));
+            body += '<rect x="' + x0.toFixed(2) + '" y="' + y0.toFixed(2) +
+              '" width="' + bw.toFixed(2) + '" height="' + Math.max(y1 - y0, 0.4).toFixed(2) +
+              '" fill="' + colour(si) + '"/>';
+          }
+          return;
+        }
         const group = step * 0.72;
         const bw = group / n;
-        const x0 = PAD + step * i + (step - group) / 2;
+        const x0 = LEFT + step * i + (step - group) / 2;
         for (let si = 0; si < n; si++) {
           const v = vals[si];
           if (v === undefined) continue;
-          const h = (v / max) * RISE;
-          body += '<rect x="' + (x0 + bw * si).toFixed(2) + '" y="' + (H - PAD - h).toFixed(2) +
+          const y = yOf(v);
+          /* Positive grows up from zero, negative down from it. */
+          const top = Math.min(y, zero), h = Math.abs(zero - y);
+          body += '<rect x="' + (x0 + bw * si).toFixed(2) + '" y="' + top.toFixed(2) +
             '" width="' + (bw * 0.88).toFixed(2) + '" height="' + Math.max(h, 0.4).toFixed(2) +
-            '" fill="' + fill + '" fill-opacity="' + tint(si) + '"/>';
+            '" fill="' + colour(si) + '"/>';
         }
       });
     }
 
-    body += '<line x1="' + PAD + '" y1="' + (H - PAD) + '" x2="' + (W - PAD) + '" y2="' + (H - PAD) +
+    /* The axis line is zero when zero is in view, and the bottom otherwise. */
+    body += '<line x1="' + LEFT + '" y1="' + zero.toFixed(2) + '" x2="' + (W - PAD) + '" y2="' + zero.toFixed(2) +
       '" stroke="' + CHART_INK + '" stroke-width="0.4" vector-effect="non-scaling-stroke"/>';
     return body;
   }
 
   /* The words: category labels along the bottom, the number on each column or
-   * point, and a key for the series. Percent positions mirror the geometry the
-   * SVG just drew. */
-  function renderChartText(type, series, opts) {
+   * point, axis numbers up the side, and a key for the series. Percent
+   * positions mirror the geometry the SVG just drew. */
+  function renderChartText(type, series, opts, obj) {
     const o = opts || {};
     if (!series.length) return '';
     const W = 100, H = 62, PAD = 2;
     const n = seriesCount(series);
-    const all = series.reduce(function (a, d) { return a.concat(d.values || [d.value]); }, []);
-    const max = Math.max.apply(null, all).valueOf() || 1;
+    const pal = chartPalette(obj, o);
+    const colour = function (i) { return pal[i % pal.length]; };
     const esc = function (t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
     const TOP = o.legend ? 11 : 0;
+    const LEFT = o.axis ? 12 : PAD;
     const RISE = H - PAD * 3 - TOP;
     let out = '';
+    const key = function (i, label) {
+      return '<span class="chart-key"><i style="background:' + colour(i) + '"></i>' + esc(label) + '</span>';
+    };
 
     if (type === 'pie') {
       if (!o.labels) return '';
+      const total = series.reduce(function (s, d) { return s + Math.abs(d.values ? d.values[0] : d.value); }, 0) || 1;
       series.forEach(function (d, i) {
-        out += '<span class="chart-key"><i style="opacity:' + (1 - i * 0.16).toFixed(2) +
-          '"></i>' + esc(d.label) + '</span>';
+        const v = Math.abs(d.values ? d.values[0] : d.value);
+        /* Values on a pie means the share, because the number itself is already
+         * the slice — a percentage is the thing a pie is for. */
+        const pct = o.values ? ': ' + Math.round((v / total) * 100) + '%' : '';
+        out += key(i, d.label + pct);
       });
       return '<div class="chart-legend">' + out + '</div>';
     }
 
-    const step = (W - PAD * 2) / series.length;
-    series.forEach(function (d, i) {
-      const cx = PAD + step * (i + 0.5);
+    const scale = chartScale(series, type !== 'line' && type !== 'scatter' && o.stack);
+    const yOf = function (v) {
+      const span = (scale.hi - scale.lo) || 1;
+      return (H - PAD) - ((v - scale.lo) / span) * RISE;
+    };
+
+    if (o.axis) {
+      scale.ticks.forEach(function (t) {
+        out += '<span class="chart-axis" style="left:0;top:' + (yOf(t) / H * 100).toFixed(2) + '%;">' +
+          esc(t) + '</span>';
+      });
+    }
+
+    const step = (W - PAD - LEFT) / series.length;
+    if (type === 'scatter') {
+      const xs = series.map(function (d, i) {
+        const v = parseFloat(d.label);
+        return isFinite(v) ? v : i + 1;
+      });
+      const xt = niceTicks(Math.min.apply(null, xs.concat([0])), Math.max.apply(null, xs));
       if (o.labels) {
-        out += '<span class="chart-cat" style="left:' + cx.toFixed(2) + '%;">' + esc(d.label) + '</span>';
-      }
-      if (o.values) {
-        (d.values || [d.value]).forEach(function (v, si) {
-          const y = (H - PAD - (v / max) * RISE) / H * 100;
-          const off = n === 1 ? 0 : (si - (n - 1) / 2) * (step * 0.72 / n);
-          out += '<span class="chart-val" style="left:' + (cx + off).toFixed(2) +
-            '%;top:' + Math.max(0, y - 9).toFixed(2) + '%;">' + esc(v) + '</span>';
+        xt.forEach(function (t) {
+          const x = LEFT + ((t - xt[0]) / ((xt[xt.length - 1] - xt[0]) || 1)) * (W - PAD - LEFT);
+          out += '<span class="chart-cat" style="left:' + x.toFixed(2) + '%;">' + esc(t) + '</span>';
         });
       }
-    });
+      if (o.values) {
+        series.forEach(function (d, i) {
+          const x = LEFT + ((xs[i] - xt[0]) / ((xt[xt.length - 1] - xt[0]) || 1)) * (W - PAD - LEFT);
+          (d.values || [d.value]).forEach(function (v) {
+            out += '<span class="chart-val" style="left:' + x.toFixed(2) + '%;top:' +
+              Math.max(0, yOf(v) / H * 100 - 9).toFixed(2) + '%;">' + esc(v) + '</span>';
+          });
+        });
+      }
+    } else {
+      series.forEach(function (d, i) {
+        const cx = LEFT + step * (i + 0.5);
+        if (o.labels) {
+          out += '<span class="chart-cat" style="left:' + cx.toFixed(2) + '%;">' + esc(d.label) + '</span>';
+        }
+        if (o.values) {
+          const vals = d.values || [d.value];
+          if (o.stack && type !== 'line') {
+            /* One number per column: the total, because the parts are stacked
+             * and their own numbers would overlap. */
+            const sum = vals.reduce(function (a, v) { return a + (v || 0); }, 0);
+            out += '<span class="chart-val" style="left:' + cx.toFixed(2) + '%;top:' +
+              Math.max(0, yOf(sum) / H * 100 - 9).toFixed(2) + '%;">' + esc(Math.round(sum * 100) / 100) + '</span>';
+          } else {
+            vals.forEach(function (v, si) {
+              if (v === undefined) return;
+              const y = yOf(v) / H * 100;
+              const off = n === 1 || type === 'line' ? 0 : (si - (n - 1) / 2) * (step * 0.72 / n);
+              out += '<span class="chart-val" style="left:' + (cx + off).toFixed(2) +
+                '%;top:' + Math.max(0, y - 9).toFixed(2) + '%;">' + esc(v) + '</span>';
+            });
+          }
+        }
+      });
+    }
 
     if (o.legend) {
       const names = (o.names || '').split(',').map(function (x) { return x.trim(); });
       let keys = '';
-      for (let si = 0; si < n; si++) {
-        keys += '<span class="chart-key"><i style="opacity:' + (1 - si * 0.22).toFixed(2) +
-          '"></i>' + esc(names[si] || 'Series ' + (si + 1)) + '</span>';
-      }
+      for (let si = 0; si < n; si++) keys += key(si, names[si] || 'Series ' + (si + 1));
       out += '<div class="chart-legend">' + keys + '</div>';
     }
     return out;
@@ -2342,8 +2647,14 @@
       values: obj.hasAttribute('data-chart-values'),
       legend: obj.hasAttribute('data-chart-legend'),
       grid: obj.hasAttribute('data-chart-grid'),
+      axis: obj.hasAttribute('data-chart-axis'),
+      area: obj.hasAttribute('data-chart-area'),
+      smooth: obj.hasAttribute('data-chart-smooth'),
+      stack: obj.hasAttribute('data-chart-stack'),
+      donut: obj.hasAttribute('data-chart-donut'),
       names: obj.getAttribute('data-chart-names') || '',
-      colour: obj.getAttribute('data-chart-colour') || ''
+      colour: obj.getAttribute('data-chart-colour') || '',
+      colours: obj.getAttribute('data-chart-colours') || ''
     };
   }
 
@@ -2355,7 +2666,7 @@
     const type = obj.getAttribute('data-chart') || 'bar';
     const series = parseSeries(obj.getAttribute('data-chart-data'));
     const o = chartOpts(obj);
-    svg.innerHTML = renderChart(type, series, o);
+    svg.innerHTML = renderChart(type, series, o, obj);
     let words = host.querySelector('.chart-words');
     if (!words) {
       words = document.createElement('div');
@@ -2363,7 +2674,7 @@
       words.setAttribute('contenteditable', 'false');
       host.appendChild(words);
     }
-    words.innerHTML = renderChartText(type, series, o);
+    words.innerHTML = renderChartText(type, series, o, obj);
   }
 
   function chartMarkup() {
@@ -3572,14 +3883,136 @@
     pushAttr(apply, before, after);
   }
 
+  /* Selection order, which matters for "the first one you picked". The DOM query
+   * gives document order — the order things were drawn, not the order a hand
+   * chose them. */
+  function selectedInOrder() {
+    try {
+      if (editor && editor.selected && editor.selected.size) {
+        /* Array.from, not slice.call: a Set has no length and no indices, so the
+         * array-like trick that works on a NodeList returns nothing at all —
+         * silently, which made every control that asks "what is selected?" think
+         * the answer was nothing. */
+        return Array.from(editor.selected)
+          .filter(function (el) { return document.contains(el); });
+      }
+    } catch (e) {}
+    return selectedObjects();
+  }
+
+  /* What the selection is aligned against. One object has nothing to line up
+   * with except the slide, so it lines up with the slide; several line up with
+   * each other, inside their own bounds.
+   *
+   * This is Bento's reading of it, and it is better than what was here: a row
+   * called "align to each other" that vanished with one thing selected, plus a
+   * separate row that could only centre. Left, right, top and bottom on the
+   * slide were unreachable, and the panel had two rows saying one thing. */
+  function alignFrame(boxes) {
+    if (boxes.length < 2) return { x0: 0, y0: 0, x1: 100, y1: 100 };
+    return {
+      x0: Math.min.apply(null, boxes.map(function (b) { return b.x; })),
+      y0: Math.min.apply(null, boxes.map(function (b) { return b.y; })),
+      x1: Math.max.apply(null, boxes.map(function (b) { return b.x + b.w; })),
+      y1: Math.max.apply(null, boxes.map(function (b) { return b.y + b.h; }))
+    };
+  }
+
   const ALIGNERS = {
-    left:    function (b) { const v = Math.min.apply(null, b.map(function (x) { return x.x; })); return b.map(function () { return { left: v + '%' }; }); },
-    right:   function (b) { const v = Math.max.apply(null, b.map(function (x) { return x.x + x.w; })); return b.map(function (x) { return { left: (v - x.w) + '%' }; }); },
-    hcenter: function (b) { const v = b.reduce(function (a, x) { return a + x.x + x.w / 2; }, 0) / b.length; return b.map(function (x) { return { left: (v - x.w / 2) + '%' }; }); },
-    top:     function (b) { const v = Math.min.apply(null, b.map(function (x) { return x.y; })); return b.map(function () { return { top: v + '%' }; }); },
-    bottom:  function (b) { const v = Math.max.apply(null, b.map(function (x) { return x.y + x.h; })); return b.map(function (x) { return { top: (v - x.h) + '%' }; }); },
-    vcenter: function (b) { const v = b.reduce(function (a, x) { return a + x.y + x.h / 2; }, 0) / b.length; return b.map(function (x) { return { top: (v - x.h / 2) + '%' }; }); }
+    left:    function (b, f) { return b.map(function () { return { left: f.x0 + '%' }; }); },
+    right:   function (b, f) { return b.map(function (x) { return { left: (f.x1 - x.w) + '%' }; }); },
+    hcenter: function (b, f) { return b.map(function (x) { return { left: ((f.x0 + f.x1) / 2 - x.w / 2) + '%' }; }); },
+    top:     function (b, f) { return b.map(function () { return { top: f.y0 + '%' }; }); },
+    bottom:  function (b, f) { return b.map(function (x) { return { top: (f.y1 - x.h) + '%' }; }); },
+    vcenter: function (b, f) { return b.map(function (x) { return { top: ((f.y0 + f.y1) / 2 - x.h / 2) + '%' }; }); }
   };
+
+  function alignSelection(edge) {
+    const els = selectedInOrder();
+    if (!els.length) return;
+    const fn = ALIGNERS[edge];
+    if (!fn) return;
+    moveMany(els, function (boxes) { return fn(boxes, alignFrame(boxes)); });
+    syncInspector();
+  }
+
+  /* Same width or height across the selection, with the first one picked as the
+   * reference — so "make these match" has an answer that does not depend on
+   * which of them happens to be widest. */
+  function matchSize(dim) {
+    const els = selectedInOrder();
+    if (els.length < 2) return;
+    const prop = dim === 'w' ? 'width' : 'height';
+    const ref = pct(els[0], prop);
+    if (ref === null) return;
+    const before = els.map(function (el) { return el.style[prop]; });
+    const after = els.map(function () { return ref + '%'; });
+    const apply = function (list) {
+      els.forEach(function (el, i) { el.style[prop] = list[i]; });
+    };
+    pushAttr(apply, before, after);
+    syncInspector();
+  }
+
+  /* ---------- Grouping ----------
+   *
+   * A group is an attribute, not a container: every member carries the same
+   * data-group. Nothing moves in the DOM, so paint order, entrances, morph pairs
+   * and the percentage geometry all stay exactly as they were — and a deck that
+   * lands somewhere without this runtime still renders identically, because a
+   * group means nothing to a browser.
+   *
+   * Clicking one member selects the whole group. Alt-click reaches the one under
+   * the pointer, which is Bento's shortcut and the only way to fix one piece of
+   * a group without taking it apart.
+   */
+  function groupMembers(el) {
+    const id = el && el.getAttribute && el.getAttribute('data-group');
+    if (!id) return [el];
+    const slide = el.closest('section.slide');
+    if (!slide) return [el];
+    return Array.prototype.slice.call(
+      slide.querySelectorAll('[data-slide-object][data-group="' + CSS.escape(id) + '"]'));
+  }
+
+  function groupSelection() {
+    const els = selectedInOrder();
+    if (els.length < 2) return;
+    const id = 'g' + Math.random().toString(36).slice(2, 8);
+    const before = els.map(function (el) { return el.getAttribute('data-group'); });
+    const apply = function (list) {
+      els.forEach(function (el, i) {
+        const v = !list ? null : (typeof list === 'string' ? list : list[i]);
+        if (v) el.setAttribute('data-group', v); else el.removeAttribute('data-group');
+      });
+      syncInspector();
+    };
+    pushAttr(apply, before, id);
+  }
+
+  function ungroupSelection() {
+    const els = selectedInOrder();
+    if (!els.length) return;
+    /* Ungrouping one member ungroups the group: the members are the group, and
+     * leaving one behind would make a group of one. */
+    const all = [];
+    els.forEach(function (el) {
+      groupMembers(el).forEach(function (m) { if (all.indexOf(m) === -1) all.push(m); });
+    });
+    const grouped = all.filter(function (el) { return el.hasAttribute('data-group'); });
+    if (!grouped.length) return;
+    const before = grouped.map(function (el) { return el.getAttribute('data-group'); });
+    /* null is the whole point of ungrouping, and `typeof null` is 'object', so a
+     * plain string-or-array test walked straight into indexing it. */
+    const apply = function (list) {
+      grouped.forEach(function (el, i) {
+        const v = !list ? null : (typeof list === 'string' ? list : list[i]);
+        if (v) el.setAttribute('data-group', v); else el.removeAttribute('data-group');
+      });
+      syncInspector();
+    };
+    pushAttr(apply, before, null);
+  }
 
   /* Spread keeps the two outermost objects where they are and evens the gaps
    * between the rest — the same rule every drawing tool uses. */
@@ -3608,14 +4041,24 @@
 
     const al = t.closest('[data-align]');
     if (al) {
-      const els = selectedObjects();
-      if (els.length >= 2) moveMany(els, ALIGNERS[al.getAttribute('data-align')]);
+      alignSelection(al.getAttribute('data-align'));
       return;
     }
     const sp = t.closest('[data-distribute]');
     if (sp) {
-      const els = selectedObjects();
+      const els = selectedInOrder();
       if (els.length >= 3) moveMany(els, function (b) { return spread(b, sp.getAttribute('data-distribute')); });
+      return;
+    }
+    const ms = t.closest('[data-match]');
+    if (ms) {
+      matchSize(ms.getAttribute('data-match'));
+      return;
+    }
+    const gr = t.closest('[data-group]');
+    if (gr) {
+      if (gr.getAttribute('data-group') === 'group') groupSelection();
+      else ungroupSelection();
       return;
     }
     const obj = selectedObject();
@@ -3700,6 +4143,7 @@
     const obj = selectedObject();
     if (!obj || obj.getAttribute('data-object-type') !== 'chart') return;
     if (t.closest('[data-chart-names]')) chartSet(obj, 'data-chart-names', t.value);
+    else if (t.closest('[data-chart-colours]')) chartSet(obj, 'data-chart-colours', t.value);
     else if (t.closest('[data-chart-colour]')) chartSet(obj, 'data-chart-colour', t.value);
   });
 
@@ -4419,6 +4863,266 @@
     if (obj) setBlockList(obj, b.getAttribute('data-block-list'));
   });
 
+  /* ---------- Type markdown, get typography ----------
+   *
+   * Ported from Bento's slides/src/editor/markdown.ts (MIT) — the same patterns,
+   * the same revertible-with-⌘Z behaviour, the same backslash escape. Two
+   * entry points: one that fires on every keystroke and collapses a pattern the
+   * moment it is complete, and one that converts pasted plain text.
+   *
+   * One deliberate difference. Bento turns "- " into a "• " glyph because its
+   * slides have no list DOM — a list there is separate text rows. This runtime
+   * has real <ul> and <ol>, with Tab to nest and a panel that knows which kind a
+   * block is, so "- " makes a list and "1. " makes a numbered one. A glyph would
+   * have been the easier port and the worse result: it would not indent, would
+   * not renumber, and would leave a bullet character in the exported file where
+   * a list belongs.
+   */
+  const MD_INLINE = [
+    { re: /\*\*([^*\n]+)\*\*$/, tag: 'b' },
+    { re: /__([^_\n]+)__$/, tag: 'b' },
+    { re: /(?<![*\w])\*([^*\n]+)\*$/, tag: 'i' },
+    { re: /(?<![_\w])_([^_\n]+)_$/, tag: 'i' },
+    { re: /~~([^~\n]+)~~$/, tag: 's' },
+    { re: /`([^`\n]+)`$/, tag: 'code' }
+  ];
+
+  /* The most recent conversion, revertible with ⌘Z until the next keystroke.
+   * Without this a pattern you meant literally could only be recovered by
+   * deleting the formatted text and retyping it with escapes. */
+  let mdLast = null;
+  function mdClear() { mdLast = null; }
+
+  function mdCaretTo(node, offset) {
+    const r = document.createRange();
+    r.setStart(node, offset);
+    r.collapse(true);
+    const sel = document.getSelection();
+    if (!sel) return;
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }
+
+  /* True when the offset sits at the start of a rendered line: the beginning of
+   * the text, or just after a <br>, or the beginning of an <li>. The zero-width
+   * spacers a previous conversion left behind are see-through. */
+  function mdLineStart(node, offset) {
+    const before = node.data.slice(0, offset).replace(/​/g, '');
+    if (before) return before.endsWith('\n');
+    let prev = node.previousSibling;
+    while (prev && prev.nodeType === Node.TEXT_NODE && /^[​\s]*$/.test(prev.data)) {
+      prev = prev.previousSibling;
+    }
+    if (!prev) return true;
+    return prev.nodeType === Node.ELEMENT_NODE && prev.tagName === 'BR';
+  }
+
+  /* The <li> or the whole block the caret sits in, whichever is the line. */
+  function mdLineHost(node, host) {
+    let n = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    while (n && n !== host) {
+      if (n.tagName === 'LI') return n;
+      n = n.parentElement;
+    }
+    return null;
+  }
+
+  /** "- " or "1. " at the start of a line turns the line into a list item. */
+  function mdListAtCaret(host, node, off) {
+    const upto = node.data.slice(0, off);
+    /* contentEditable renders the trailing space as a non-breaking one, so both
+     * spellings have to match or the rule fires for typed text and not for
+     * typed-in-a-browser text. */
+    const bullet = /(?:^|\n)([-*])[  ]$/.exec(upto);
+    const number = /(?:^|\n)(\d+)[.)][  ]$/.exec(upto);
+    const hit = bullet || number;
+    if (!hit) return false;
+    const marker = hit[0].replace(/^\n/, '');
+    const start = off - marker.length;
+    if (start < 0 || !mdLineStart(node, start)) return false;
+    /* Already inside a list: the marker is just text the person typed, and
+     * turning the item into an item again would nest it for no reason. */
+    if (mdLineHost(node, host)) return false;
+
+    const kind = bullet ? 'ul' : 'ol';
+    const before = host.innerHTML;
+    node.deleteData(start, marker.length);
+    /* One line becomes one item, and the rest of the block stays as it was —
+     * which is what "- " on line three of a paragraph means. */
+    const lines = blockLines(host);
+    const idx = mdWhichLine(host, node);
+    const rest = lines.slice();
+    const own = rest.splice(idx, 1)[0] || '<br>';
+    const list = '<' + kind + ' style="' + listLook() + '"><li>' + own + '</li></' + kind + '>';
+    const html = rest.length
+      ? (idx === 0 ? list + rest.join('<br>') : rest.slice(0, idx).join('<br>') + list + rest.slice(idx).join('<br>'))
+      : list;
+    host.innerHTML = html;
+    /* The caret has to land in a TEXT node. An empty line arrives as a lone
+     * <br>, and a caret "inside" a <br> is not a position: the browser accepts
+     * the range, and then everything typed becomes a child of a void element —
+     * which renders nowhere and disappears from innerHTML, so the words were
+     * gone the moment the file was saved. A test that read textContent could not
+     * see it; a screenshot could. */
+    const li = host.querySelector('li');
+    if (li) {
+      let at = li.firstChild;
+      if (at && at.nodeName === 'BR' && li.childNodes.length === 1) {
+        at.remove();
+        at = null;
+      }
+      if (!at || at.nodeType !== Node.TEXT_NODE) {
+        /* A zero-width space, not an empty string: an empty text node in an
+         * empty editable block gets swept away and replaced with a placeholder
+         * <br>, taking the caret with it. One invisible character keeps the node
+         * alive and the caret in text — the same trick the inline conversion
+         * above uses for the same reason. */
+        at = document.createTextNode('\u200B');
+        li.insertBefore(at, li.firstChild || null);
+      }
+      mdCaretTo(at, at.data.length);
+    }
+    mdLast = { kind: 'list', host, before, marker: marker };
+    return true;
+  }
+
+  /* Which rendered line the node is on, counting <br>s before it. */
+  function mdWhichLine(host, node) {
+    const walker = document.createTreeWalker(host, NodeFilter.SHOW_ALL, null);
+    let line = 0;
+    let n = walker.nextNode();
+    while (n) {
+      if (n === node) return line;
+      if (n.nodeType === Node.ELEMENT_NODE && n.tagName === 'BR') line += 1;
+      n = walker.nextNode();
+    }
+    return line;
+  }
+
+  /** Collapse a just-completed marker before the caret. True if it fired. */
+  function mdAutoformat(host) {
+    const sel = document.getSelection();
+    if (!sel || !sel.isCollapsed) return false;
+    const node = sel.anchorNode;
+    if (!node || node.nodeType !== Node.TEXT_NODE) return false;
+    if (host && !host.contains(node)) return false;
+    /* Captured before anything mutates: the live selection resets as soon as
+     * the DOM under it changes. */
+    const off = sel.anchorOffset;
+
+    if (host && mdListAtCaret(host, node, off)) return true;
+
+    const upto = node.data.slice(0, off);
+    for (let i = 0; i < MD_INLINE.length; i++) {
+      const rule = MD_INLINE[i];
+      const m = upto.match(rule.re);
+      if (!m || !m[1]) continue;
+      const start = off - m[0].length;
+      // \*literal\* stays literal
+      if (start > 0 && node.data[start - 1] === '\\') continue;
+      const range = document.createRange();
+      range.setStart(node, start);
+      range.setEnd(node, off);
+      range.deleteContents();
+      const el = document.createElement(rule.tag);
+      el.textContent = m[1];
+      range.insertNode(el);
+      /* The caret goes into a fresh text node AFTER the element, so what you
+       * type next is plain rather than more bold. */
+      const tail = document.createTextNode('​');
+      el.after(tail);
+      mdCaretTo(tail, 1);
+      mdLast = { kind: 'inline', el: el, source: m[0], tail: tail };
+      return true;
+    }
+    return false;
+  }
+
+  /** ⌘Z straight after a conversion puts the literal characters back. */
+  function mdUndo() {
+    const last = mdLast;
+    mdLast = null;
+    if (!last) return false;
+    if (last.kind === 'list') {
+      if (!last.host.isConnected) return false;
+      last.host.innerHTML = last.before;
+      return true;
+    }
+    if (!last.el.isConnected) return false;
+    const literal = document.createTextNode(last.source);
+    last.el.replaceWith(literal);
+    if (last.tail.parentNode) last.tail.remove();
+    mdCaretTo(literal, literal.data.length);
+    return true;
+  }
+
+  /** Pasted plain text → the small HTML subset a text object holds. */
+  function mdToHtml(text) {
+    /* Escaped markers are parked out of reach while the patterns run, then put
+     * back, so \* survives being next to a real one. */
+    const parked = [];
+    const withParked = String(text).replace(/\\([*_~`-])/g, function (_, c) {
+      parked.push(c);
+      return '' + (parked.length - 1) + '';
+    });
+    const lines = withParked.split('\n');
+    let out = '';
+    let list = null;   // 'ul' | 'ol' while a run of items is open
+    const inline = function (s) {
+      s = escapeText(s);
+      s = s.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+      s = s.replace(/__([^_]+)__/g, '<b>$1</b>');
+      s = s.replace(/(?<![*\w])\*([^*]+)\*/g, '<i>$1</i>');
+      s = s.replace(/(?<![_\w])_([^_]+)_(?![\w])/g, '<i>$1</i>');
+      s = s.replace(/~~([^~]+)~~/g, '<s>$1</s>');
+      s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+      return s;
+    };
+    const closeList = function () {
+      if (list) { out += '</' + list + '>'; list = null; }
+    };
+    lines.forEach(function (line, i) {
+      const bullet = /^\s*[-*]\s+(.*)$/.exec(line);
+      const number = /^\s*\d+[.)]\s+(.*)$/.exec(line);
+      const kind = bullet ? 'ul' : number ? 'ol' : null;
+      if (kind) {
+        /* A pasted list arrives as a list, not as lines that look like one. */
+        if (list !== kind) { closeList(); out += '<' + kind + ' style="' + listLook() + '">'; list = kind; }
+        out += '<li>' + inline((bullet || number)[1]) + '</li>';
+        return;
+      }
+      closeList();
+      if (i > 0 && out && !/(<\/ul>|<\/ol>)$/.test(out)) out += '<br>';
+      out += inline(line);
+    });
+    closeList();
+    return out.replace(/(\d+)/g, function (_, i) { return parked[+i]; });
+  }
+
+  /* Wiring: every keystroke in editable slide text gets a look, and a paste of
+   * plain text comes in converted. The image-paste handler above deals with
+   * screenshots; this is the text half, and it only claims the event when the
+   * clipboard has no file on it. */
+  document.addEventListener('input', function (e) {
+    const host = e.target;
+    if (!host || !host.classList || !host.classList.contains('slide-object-text')) return;
+    if (host.getAttribute('contenteditable') !== 'true') return;
+    if (!mdAutoformat(host)) mdClear();
+  });
+
+  document.addEventListener('paste', function (e) {
+    const host = e.target && e.target.closest && e.target.closest('.slide-object-text[contenteditable="true"]');
+    if (!host) return;
+    const cd = e.clipboardData;
+    if (!cd) return;
+    if (cd.files && cd.files.length) return;   // an image; the handler above has it
+    const text = cd.getData('text/plain');
+    if (!text) return;
+    e.preventDefault();
+    document.execCommand('insertHTML', false, mdToHtml(text));
+    mdClear();
+  }, true);
+
   /* Tab moves an item in, Shift+Tab out — the one gesture everybody tries on a
    * list. Without it Tab left the text entirely.
    *
@@ -4640,8 +5344,29 @@
     show('sectMotion', !!obj);
     /* Aligning objects to one another means nothing with one object, so the
      * row is not offered until there are two. */
+    /* Align is always available now: with one object it means the slide. Spread
+     * needs three to have a middle, matching needs two to have a reference, and
+     * grouping needs either two things or a group already. */
+    const picked = selectedInOrder();
     const alignRow = document.getElementById('alignRow');
-    if (alignRow) alignRow.hidden = selectedObjects().length < 2;
+    if (alignRow) alignRow.hidden = !picked.length;
+    const alignLabel = document.getElementById('alignLabel');
+    if (alignLabel) {
+      alignLabel.textContent = picked.length > 1 ? 'Align to each other' : 'Align on the slide';
+    }
+    const spreadRow = document.getElementById('spreadRow');
+    if (spreadRow) spreadRow.hidden = picked.length < 3;
+    const matchRow = document.getElementById('matchRow');
+    if (matchRow) matchRow.hidden = picked.length < 2;
+    const groupRow = document.getElementById('groupRow');
+    if (groupRow) {
+      const inGroup = picked.some(function (el) { return el.hasAttribute('data-group'); });
+      groupRow.hidden = picked.length < 2 && !inGroup;
+      const gb = groupRow.querySelector('[data-group="group"]');
+      const ub = groupRow.querySelector('[data-group="ungroup"]');
+      if (gb) gb.disabled = picked.length < 2;
+      if (ub) ub.disabled = !inGroup;
+    }
     show('sectText', type === 'text');
     show('sectTable', type === 'table');
     show('sectChart', type === 'chart');
@@ -4695,8 +5420,17 @@
         document.querySelectorAll('[data-chart-flag]').forEach(function (b) {
           b.classList.toggle('active', obj.hasAttribute('data-chart-' + b.getAttribute('data-chart-flag')));
         });
+        /* Stacking is a thing columns do, smoothing a thing lines do, and a
+         * hole is a thing a pie has. Showing all of them for every chart made
+         * the panel look like it had settings that did nothing. */
+        const kind = obj.getAttribute('data-chart') || 'bar';
+        document.querySelectorAll('[data-chart-only]').forEach(function (row) {
+          row.hidden = row.getAttribute('data-chart-only') !== kind;
+        });
         const nm = document.querySelector('[data-chart-names]');
         if (nm && document.activeElement !== nm) nm.value = obj.getAttribute('data-chart-names') || '';
+        const cl = document.querySelector('[data-chart-colours]');
+        if (cl && document.activeElement !== cl) cl.value = obj.getAttribute('data-chart-colours') || '';
         const cc = document.querySelector('[data-chart-colour]');
         if (cc && document.activeElement !== cc) {
           cc.value = obj.getAttribute('data-chart-colour') ||
@@ -4919,6 +5653,12 @@
     const obj = selectedObject();
     if (!obj) return;
     const what = b.getAttribute('data-arrange');
+    /* One step at a time, which is what you want when something is hiding behind
+     * exactly one other thing. Front and back are the blunt versions and stay. */
+    if (what === 'forward' || what === 'backward') {
+      stepOrder(selectedInOrder(), what === 'forward' ? 1 : -1);
+      return;
+    }
     const parent = obj.parentNode;
     const before = { next: obj.nextElementSibling, left: obj.style.left, top: obj.style.top };
     const apply = function (state) {
@@ -4937,6 +5677,33 @@
     updateUndoRedoChrome();
     syncInspector();
   });
+
+  /* Swap each selected object with its neighbour in paint order, skipping the
+   * ones that are also selected — otherwise a pair moving up would swap with
+   * each other and never leave. Ported from Bento's panels.ts step (MIT). */
+  function stepOrder(els, dir) {
+    if (!els.length) return;
+    const parent = els[0].parentNode;
+    const kids = Array.prototype.slice.call(parent.children);
+    const before = kids.slice();
+    const mine = new Set(els);
+    const idxs = kids.map(function (el, i) { return mine.has(el) ? i : -1; })
+      .filter(function (i) { return i >= 0; });
+    const order = dir > 0 ? idxs.slice().reverse() : idxs;
+    order.forEach(function (i) {
+      const j = i + dir;
+      if (j < 0 || j >= kids.length || mine.has(kids[j])) return;
+      const tmp = kids[i];
+      kids[i] = kids[j];
+      kids[j] = tmp;
+    });
+    const after = kids.slice();
+    const apply = function (list) {
+      list.forEach(function (el) { parent.appendChild(el); });
+      syncInspector();
+    };
+    if (before.some(function (el, i) { return el !== after[i]; })) pushAttr(apply, before, after);
+  }
 
   document.addEventListener('input', function (e) {
     const c = e.target.closest && e.target.closest('[data-text-colour]');

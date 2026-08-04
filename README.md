@@ -3,8 +3,11 @@
 **Bring your own design. This makes it editable.**
 
 A drop-in runtime that turns a static HTML slide deck into an editable one — and
-a presentable one — in the browser, with nothing installed. Drag and resize
-objects, edit text, link it, manage pages, insert shapes, tables and charts, add motion,
+a presentable one — in the browser, with nothing installed. Drag, resize and
+rotate objects, group them, align and distribute them, **type markdown and get
+typography** (`**bold**`, `- ` for a list, `` `code` ``), edit text, link it,
+manage pages, insert shapes, tables and charts — bar, line, pie and scatter, with
+axis numbers and a palette derived from your own accent — add motion,
 **press P to present and S for a speaker view with your notes and a timer**, and
 export HTML or PDF. All of it from a file on a disk, with no server: the deck
 stays a single self-contained file, so you send it and the recipient gets the

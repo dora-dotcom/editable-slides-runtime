@@ -170,8 +170,12 @@
           <button type="button" data-arrange="front" title="Bring to front">Bring to front</button>
           <button type="button" data-arrange="back" title="Send to back">Send to back</button>
         </div>
+        <div class="deck-field-row deck-split2">
+          <button type="button" data-arrange="forward" title="Forward one step">Forward</button>
+          <button type="button" data-arrange="backward" title="Backward one step">Backward</button>
+        </div>
       </div>
-      <div class="deck-field" id="alignRow"><span class="deck-field-label">Align to each other</span>
+      <div class="deck-field" id="alignRow"><span class="deck-field-label" id="alignLabel">Align on the slide</span>
         <div class="deck-field-row deck-field-row--icons">
           <button type="button" data-align="left" title="Left edges" aria-label="Align left edges">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3v18M7 7h9M7 14h13"/></svg>
@@ -192,15 +196,19 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18M7 8v9M14 4v13"/></svg>
           </button>
         </div>
-        <div class="deck-field-row deck-field-row--icons">
-          <button type="button" data-distribute="h" title="Even gaps across">Spread across</button>
-          <button type="button" data-distribute="v" title="Even gaps down">Spread down</button>
+        <div class="deck-field-row deck-split2" id="spreadRow">
+          <button type="button" data-distribute="h" title="Even gaps across (three or more)">Spread across</button>
+          <button type="button" data-distribute="v" title="Even gaps down (three or more)">Spread down</button>
+        </div>
+        <div class="deck-field-row deck-split2" id="matchRow">
+          <button type="button" data-match="w" title="Same width as the first one you picked">Match width</button>
+          <button type="button" data-match="h" title="Same height as the first one you picked">Match height</button>
         </div>
       </div>
-      <div class="deck-field"><span class="deck-field-label">Centre on the slide</span>
+      <div class="deck-field" id="groupRow"><span class="deck-field-label">Group</span>
         <div class="deck-field-row deck-split2">
-          <button type="button" data-arrange="hcenter" title="Centre horizontally">Horizontally</button>
-          <button type="button" data-arrange="vcenter" title="Centre vertically">Vertically</button>
+          <button type="button" data-group="group" title="Move and select as one (&#8984;G)">Group</button>
+          <button type="button" data-group="ungroup" title="Let them go their own ways (&#8679;&#8984;G)">Ungroup</button>
         </div>
       </div>
     </div>
@@ -354,12 +362,13 @@
           <button type="button" data-chart-type="bar">Bar</button>
           <button type="button" data-chart-type="line">Line</button>
           <button type="button" data-chart-type="pie">Pie</button>
+          <button type="button" data-chart-type="scatter">Scatter</button>
         </div>
       </div>
       <div class="deck-field"><span class="deck-field-label">Data</span>
         <div class="deck-field-row"><input type="text" data-chart-data-input placeholder="Q1 12, Q2 18"></div>
       </div>
-      <p class="deck-field-hint">One entry per comma: a label then its numbers. Give a label two numbers and you get two series.</p>
+      <p class="deck-field-hint">One entry per comma: a label then its numbers. Give a label two numbers and you get two series. A scatter reads the label as the x: <code>10 8, 15 12</code>.</p>
       <div class="deck-field"><span class="deck-field-label">Series names</span>
         <div class="deck-field-row"><input type="text" data-chart-names placeholder="Plan, Actual"></div>
       </div>
@@ -369,10 +378,31 @@
           <button type="button" data-chart-flag="values" title="The number on each bar or point">Values</button>
           <button type="button" data-chart-flag="legend" title="Which colour is which series">Legend</button>
           <button type="button" data-chart-flag="grid" title="Lines across the back">Grid</button>
+          <button type="button" data-chart-flag="axis" title="Numbers up the side, on round values">Axis</button>
+        </div>
+      </div>
+      <div class="deck-field" data-chart-only="bar"><span class="deck-field-label">Columns</span>
+        <div class="deck-field-row">
+          <button type="button" data-chart-flag="stack" title="Series piled into one column per entry">Stacked</button>
+        </div>
+      </div>
+      <div class="deck-field" data-chart-only="line"><span class="deck-field-label">Line</span>
+        <div class="deck-field-row">
+          <button type="button" data-chart-flag="smooth" title="Curve through the points">Smooth</button>
+          <button type="button" data-chart-flag="area" title="Fill the space under the line">Area</button>
+        </div>
+      </div>
+      <div class="deck-field" data-chart-only="pie"><span class="deck-field-label">Pie</span>
+        <div class="deck-field-row">
+          <button type="button" data-chart-flag="donut" title="A hole in the middle">Doughnut</button>
         </div>
       </div>
       <div class="deck-field"><span class="deck-field-label">Colour</span>
         <div class="deck-field-row"><input type="color" data-chart-colour><button type="button" data-chart-colour-reset>Reset</button></div>
+      </div>
+      <p class="deck-field-hint">Series get their own colours, worked out from this one. Name them yourself with a list of hexes if you would rather:</p>
+      <div class="deck-field"><span class="deck-field-label">Series colours</span>
+        <div class="deck-field-row"><input type="text" data-chart-colours placeholder="#1a1a1a, #7a7a7a"></div>
       </div>
     </div>
   </section>

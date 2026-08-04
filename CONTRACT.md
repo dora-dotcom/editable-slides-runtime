@@ -78,7 +78,7 @@ that arrived carrying handles from an older version has them taken out on load.
 | `graphic` | `.slide-object-graphic > img` | Double-click replaces the image |
 | `shape` | `.slide-object-shape > svg`, plus `data-shape="rect\|ellipse\|line\|arrow"` | Inline SVG, `preserveAspectRatio="none"`, strokes marked `vector-effect="non-scaling-stroke"` |
 | `table` | `.slide-object-table > table`, cells are `.slide-object-text[contenteditable]` | `table-layout:fixed`, or one filled cell claims the row |
-| `chart` | `.slide-object-chart > svg`, plus `data-chart="bar\|line\|pie"` and `data-chart-data="Q1 12, Q2 18"` | Drawn by the runtime from the data attribute; no charting library |
+| `chart` | `.slide-object-chart > svg`, plus `data-chart="bar\|line\|pie\|scatter"` and `data-chart-data="Q1 12, Q2 18"` | Drawn by the runtime from the data attribute; no charting library. See the chart attributes below |
 | `media` | `.slide-object-media > video\|audio`, plus `data-media="video\|audio"` | Embedded as a data URI to keep the deck one file. A clip embeds at roughly 4/3 its size, so the editor warns above 8 MB — embed short, link long |
 
 You rarely need to write these by hand — the editor inserts them. Write them
@@ -98,6 +98,33 @@ the attribute and the *resolved value* as text. The document stores the token,
 so a page number follows its slide when pages are reordered. Available tokens:
 `page`, `pages`, `title`, `date`, `time`.
 
+### Charts
+
+`data-chart-data` is the whole data model: comma-separated entries, each a label
+then its numbers. Two numbers on an entry means two series. A scatter reads the
+label as the x, so `10 8, 15 12` is two points.
+
+| Attribute | Effect |
+|---|---|
+| `data-chart="bar \| line \| pie \| scatter"` | Which kind |
+| `data-chart-labels` | Category labels along the bottom, or the key on a pie |
+| `data-chart-values` | The number on each column or point; on a pie, the share |
+| `data-chart-legend` | Which colour is which series |
+| `data-chart-grid` | Lines across the back, on the same round numbers as the axis |
+| `data-chart-axis` | Numbers up the side, on round values, with a gutter reserved for them |
+| `data-chart-stack` | Bars: series piled into one column per entry |
+| `data-chart-smooth` | Lines: curve through the points |
+| `data-chart-area` | Lines: fill the space down to zero |
+| `data-chart-donut` | Pie: a hole in the middle |
+| `data-chart-names="Plan, Actual"` | Series names for the legend |
+| `data-chart-colour="#a3e635"` | The seed colour. Series colours are derived from it |
+| `data-chart-colours="#111, #777"` | Series colours stated outright, when derived ones are not what you want |
+
+Bars grow from zero rather than from the bottom of the box, so a negative number
+dips below the line. Series get distinct colours — the accent, a cool
+counterpart, and a light and deep tint of each — because three opacities of one
+colour is not a legend anybody can read.
+
 ### Motion
 
 All optional, all read off the object, all ignored while editing.
@@ -115,8 +142,22 @@ the first one's box. Both frames are already stated by the two slides, so there
 is nothing to infer and nothing to configure. Change the geometry between the
 two and the motion designs itself.
 
-Motion is a viewing behaviour — none of it runs in edit mode, where it would
-fight a drag — and all of it respects `prefers-reduced-motion`.
+Motion is a viewing behaviour — none of it runs in edit mode, where an entrance
+still in flight would fight a drag. Entering the editor cancels the ones the
+runtime started, rather than overriding their transform in CSS: an object with an
+entrance has to stay something you can rotate. All of it respects
+`prefers-reduced-motion`.
+
+### Grouping
+
+| Attribute | Effect |
+|---|---|
+| `data-group="anything"` | Objects sharing a value on the same slide select and move as one. Alt-click reaches a single member |
+
+A group is an attribute rather than a container: nothing moves in the DOM, so
+paint order, entrances, morph pairs and the percentage geometry are all
+untouched, and a deck opened without this runtime renders exactly the same —
+`data-group` means nothing to a browser.
 
 ### Speaker notes
 

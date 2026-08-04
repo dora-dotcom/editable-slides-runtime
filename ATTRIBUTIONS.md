@@ -38,6 +38,19 @@ means that by the time the runtime runs the library is simply there.
 
 Upgrading either one is: replace the file, run `refresh_runtime.py`.
 
+## Ported algorithms
+
+Not vendored files — code written into `runtime/runtime.js` after reading
+Bento's ([nyblnet/bento](https://github.com/nyblnet/bento), MIT), and credited
+here because the design is theirs:
+
+| What | From | Notes |
+|---|---|---|
+| Markdown affordances while typing — `**bold**`, `*italic*`, `` `code` ``, `~~strike~~`, revertible with ⌘Z, backslash escapes, and the paste conversion | `slides/src/editor/markdown.ts` | Same patterns and the same revert window. One deliberate difference: Bento turns `- ` into a "• " glyph because its slides have no list DOM; this runtime has real `<ul>`/`<ol>` with Tab to nest, so `- ` makes a list and `1. ` a numbered one |
+| Chart palette derived from a single accent | `slides/src/model.ts` `deriveChartPalette` | The accent, a cool counterpart 190° away, and a light and deep tint of each |
+| "Nice" axis ticks | `kernel/src/charts.ts` `niceTicks` | Round numbers a person would have chosen |
+| The arrange kit — align with one meaning for one object and another for several, distribute, match size, one-step reorder, group | `slides/src/editor/panels.ts` | Including the reading that makes it work: one object aligns to the slide, several align to their own bounds |
+
 ---
 
 This repository contains both original templates and templates derived from external open-source sources. All derived templates are credited below with links to their original location and license.
