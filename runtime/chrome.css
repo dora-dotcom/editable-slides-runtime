@@ -233,28 +233,45 @@ body.deck-edit-mode .slide-object-move { display: flex; }
 /* The class is doubled on purpose. The library writes its own stylesheet into
    the head when the first handle is drawn — after this file, whatever order the
    deck was assembled in — so at equal specificity its defaults win and none of
-   this would land. */
+   this would land.
+
+   Hollow and small, because a handle sits ON the thing it is for. Fourteen
+   pixels of solid accent read as a row of stickers over the words: you could not
+   see the title you were trying to edit. White fill with a thin accent edge is
+   the same target, visible against any deck, and it does not hide what is
+   underneath. */
 .moveable-control-box.moveable-control-box {
   --moveable-color: var(--deck-chrome-accent);
   touch-action: none;
 }
 .moveable-control-box.moveable-control-box .moveable-control {
+  width: 9px; height: 9px;
+  margin-top: -4.5px; margin-left: -4.5px;
   touch-action: none;
-  box-shadow: 0 0 0 1px rgba(0,0,0,0.18);
+  background: var(--deck-chrome-surface, #fff);
+  border: 1.5px solid var(--deck-chrome-accent);
+  box-shadow: none;
 }
-/* Square for sizing, round for turning — the same distinction the hand-drawn
-   handles made, because a corner and an angle are not the same gesture. */
-.moveable-control-box.moveable-control-box .moveable-direction {
-  border-radius: 3px;
-  background: var(--deck-chrome-accent);
-  border: 1px solid var(--deck-chrome-surface, #fff);
-}
+/* Square for sizing, round for turning: a corner and an angle are not the same
+   gesture, so they do not look the same. */
+.moveable-control-box.moveable-control-box .moveable-direction { border-radius: 2px; }
 .moveable-control-box.moveable-control-box .moveable-rotation .moveable-control,
 .moveable-control-box.moveable-control-box .moveable-rotation-control {
-  background: var(--deck-chrome-surface, #fff);
-  border: 2px solid var(--deck-chrome-accent);
+  width: 11px; height: 11px;
+  margin-top: -5.5px; margin-left: -5.5px;
   border-radius: 50%;
   cursor: grab;
+}
+/* The frame is a hint, not a border. Held back so a thin object does not end up
+   outlined twice as heavily as it is drawn. */
+.moveable-control-box.moveable-control-box .moveable-line {
+  opacity: 0.5;
+}
+/* The object's own selected outline would be a second frame around the same
+   box, at twice the weight. The handles say it is selected. */
+body.deck-edit-mode .slide-object.is-selected {
+  outline: 1px solid color-mix(in srgb, var(--deck-chrome-accent) 45%, transparent);
+  box-shadow: none;
 }
 
 .slide-object-text {
@@ -412,8 +429,20 @@ body.deck-edit-mode .slide-object-text [data-field] {
   background: var(--deck-chrome-accent, rgba(0,0,0,0.12));
   color: var(--deck-chrome-surface, #fff);
 }
-/* Motion is a viewing behaviour; editing must not fight a drag. */
-body.deck-edit-mode [data-fx-enter] { opacity: 1 !important; transform: none !important; }
+/* Motion is a viewing behaviour, so the editor shows the resting state — but it
+   says so without !important, and it says nothing at all about transform.
+
+   This rule used to read `opacity: 1 !important; transform: none !important`,
+   and that second half threw away every rotation applied to an object with an
+   entrance: the angle was written to the element and this took it straight back
+   off. It looked exactly like a broken rotate handle, through four rewrites of
+   the handle. The `!important` opacity was quietly eating the panel's opacity
+   slider on the same objects.
+
+   Animations the runtime started are cancelled when edit mode begins, so there
+   is nothing left here to shout down; and without !important an inline style
+   from the panel or a gesture wins, which is the whole point. */
+body.deck-edit-mode [data-fx-enter] { opacity: 1; }
 
 /* ---------- Stood down inside another viewer ----------
    A deck brings its own chrome so it works alone; framed in someone else's

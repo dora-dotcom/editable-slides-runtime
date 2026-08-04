@@ -70,7 +70,7 @@ python3 scripts/refresh_runtime.py --file editable.html
 | | |
 |---|---|
 | `runtime/` | The whole thing — `runtime.js`, `chrome.html`, `chrome.css`, `viewport-base.css` |
-| `runtime/vendor/` | The one library a deck carries: [Moveable](https://github.com/daybrush/moveable) (MIT), which drives drag, resize and rotate |
+| `runtime/vendor/` | What a deck carries besides the runtime: [Moveable](https://github.com/daybrush/moveable) for drag/resize/rotate, deflated, and [tiny-inflate](https://github.com/foliojs/tiny-inflate) to unpack it — about 99 KB in total, both MIT |
 | `CONTRACT.md` | What a deck must provide. Read this before generating one |
 | `scripts/make_deck.py` | Build a conforming deck from a design source and a markdown outline |
 | `scripts/port_to_editable.py` | Wrap an existing HTML deck to the contract |

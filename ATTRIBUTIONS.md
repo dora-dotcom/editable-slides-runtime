@@ -17,16 +17,26 @@ company's brand rather than an open-source design.
 
 ## Vendored code
 
-One library ships inside the runtime, and therefore inside every deck built with
-it.
+Two libraries ship inside the runtime, and therefore inside every deck built
+with it.
 
 | What | Where it lives | Version | License | Why |
 |---|---|---|---|---|
 | **Moveable** — [daybrush/moveable](https://github.com/daybrush/moveable) | `runtime/vendor/moveable.min.js` | 0.53.0 | MIT | Dragging, sizing and turning objects. It is what Bento uses for the same job, and four hand-written attempts at the same arithmetic were wrong in four different ways. See the `GestureRig` comment in `runtime/runtime.js`. |
+| **tiny-inflate** — [foliojs/tiny-inflate](https://github.com/foliojs/tiny-inflate) | `runtime/vendor/tiny-inflate.js` | 1.0.3 | MIT | Moveable travels deflated — 245 KB becomes 101 KB — and this inflates it as the deck parses. Ten kilobytes to save a hundred and forty. |
 
-It is inlined ahead of the runtime by `scripts/runtime_js.py`, which every
-builder reads its JavaScript through, so a deck assembled any way carries the
-same bundle. Upgrading it is: replace the file, run `refresh_runtime.py`.
+`scripts/runtime_js.py` assembles them, and every builder reads its JavaScript
+through it, so a deck assembled any way carries the same bundle. Net cost to a
+deck: about 99 KB.
+
+The browser's own `DecompressionStream` would make tiny-inflate unnecessary, and
+it was tried. It is a stream, so the library arrives a tick after the document —
+and under headless Chrome's virtual clock the promise never settled at all, so
+the page never finished loading. A deck whose handles wait on I/O is a deck that
+stalls wherever the renderer is throttled. Inflating in-line, synchronously,
+means that by the time the runtime runs the library is simply there.
+
+Upgrading either one is: replace the file, run `refresh_runtime.py`.
 
 ---
 

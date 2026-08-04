@@ -618,6 +618,15 @@
       const title = document.getElementById('deckTitle');
       if (title) title.setAttribute('contenteditable', on ? 'true' : 'false');
       if (on) {
+        /* An entrance still in flight when editing starts would fight a drag,
+         * and an animation beats an inline style, so the object would snap
+         * back. The stylesheet used to settle that with
+         * `transform: none !important`, which also threw away every rotation
+         * anyone applied to an object that had an entrance — for weeks that
+         * read as "rotation does not work" while rotation was fine.
+         * Cancelling is the honest version, and it only touches animations
+         * this runtime started. */
+        stopRuntimeAnimations();
         setTimeout(function () { if (zoomFit) fitZoom(); }, 0);
         ensureObjectGrips(document);
         ensureObjectControls(document);
@@ -1711,6 +1720,7 @@
   refreshFields();
   editor.bind();
   watchWhichSlide();
+
   updateUndoRedoChrome();
 
   /* A document's resting state is not editable — decks arrive with
@@ -2615,6 +2625,24 @@
     return t === 'none' ? rest : t + ' ' + rest;
   }
 
+  /* Every animation the runtime starts goes in here, so that entering the editor
+   * can stop exactly those and nothing else. Cancelling everything on the
+   * element would also stop a decoration the DECK animates in its own CSS, and
+   * that is not the runtime's to take away. */
+  const inFlight = new Set();
+  function playAnim(el, frames, opts) {
+    const a = el.animate(frames, opts);
+    inFlight.add(a);
+    if (a.finished && a.finished.then) {
+      a.finished.then(function () { inFlight.delete(a); }, function () { inFlight.delete(a); });
+    }
+    return a;
+  }
+  function stopRuntimeAnimations() {
+    inFlight.forEach(function (a) { try { a.cancel(); } catch (_) {} });
+    inFlight.clear();
+  }
+
   function morphInto(slideIndex, fromIndex) {
     if (prefersReducedMotion() || fromIndex === slideIndex) return;
     const slides = deck.slides || [];
@@ -2634,7 +2662,7 @@
       const sx = a.w / b.w, sy = a.h / b.h;
       if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sx - 1) < 0.01 && Math.abs(sy - 1) < 0.01) return;
 
-      obj.animate(
+      playAnim(obj,
         [
           { transformOrigin: 'top left', transform: overRest('translate(' + dx + 'px,' + dy + 'px) scale(' + sx + ',' + sy + ')', obj) },
           { transformOrigin: 'top left', transform: restTransform(obj) }
@@ -2663,7 +2691,7 @@
       });
       const order = parseInt(obj.getAttribute('data-fx-order') || '0', 10) || 0;
       const dur = parseFloat(obj.getAttribute('data-fx-duration') || '') || (frames.length && frames[0].transform ? 750 : 550);
-      obj.animate(frames, { duration: dur, delay: order * 90, easing: 'cubic-bezier(.22,.61,.36,1)', fill: 'backwards' });
+      playAnim(obj, frames, { duration: dur, delay: order * 90, easing: 'cubic-bezier(.22,.61,.36,1)', fill: 'backwards' });
     });
   }
 
@@ -2713,7 +2741,7 @@
     if (prefersReducedMotion() || !slide) return;
     const frames = SLIDE_IN[slide.getAttribute('data-transition')];
     if (!frames) return;
-    slide.animate(frames, { duration: 420, easing: 'cubic-bezier(.22,.61,.36,1)', fill: 'backwards' });
+    playAnim(slide, frames, { duration: 420, easing: 'cubic-bezier(.22,.61,.36,1)', fill: 'backwards' });
   }
 
   (function () {
