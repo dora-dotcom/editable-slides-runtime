@@ -453,13 +453,23 @@
       const moving = Array.from(this.selected).filter((o) => slide.contains(o));
       if (!moving.length) moving.push(primary);
 
-      const starts = moving.map((o) => ({
-        el: o,
-        l: this._positionPct(o, slide, 'left'),
-        t: this._positionPct(o, slide, 'top'),
-        w: o.offsetWidth,
-        h: o.offsetHeight
-      }));
+      /* Sizes measured in the same space as the slide rect. offsetWidth is in
+       * layout pixels and the rect is in on-screen pixels, and the canvas is
+       * zoomed — mixing them made the drag clamp believe a wide object was
+       * wider than the slide, which pinned it to the left edge on every drag,
+       * and quietly put the snap guides in the wrong place too. */
+      const starts = moving.map((o) => {
+        const r = o.getBoundingClientRect();
+        return {
+          el: o,
+          l: this._positionPct(o, slide, 'left'),
+          t: this._positionPct(o, slide, 'top'),
+          w: r.width,
+          h: r.height,
+          wPct: (r.width / sr.width) * 100,
+          hPct: (r.height / sr.height) * 100
+        };
+      });
 
       this._dragState = {
         slide,
@@ -749,11 +759,15 @@
       dy = snapped.dy;
 
       st.moving.forEach((m) => {
-        const nl = m.l + (dx / sr.width) * 100;
-        const nt = m.t + (dy / sr.height) * 100;
-        const maxL = 100 - (m.w / sr.width) * 100;
-        const maxT = 100 - (m.h / sr.height) * 100;
-        this._setPct(m.el, Math.max(0, Math.min(maxL, nl)), Math.max(0, Math.min(maxT, nt)));
+        let nl = m.l + (dx / sr.width) * 100;
+        let nt = m.t + (dy / sr.height) * 100;
+        /* The centre stays on the slide, not the whole object. Something
+         * bleeding off an edge is ordinary layout — forbidding it was the
+         * stricter rule and the wrong one — while keeping the middle inside
+         * means nothing can be dragged somewhere you cannot reach it again. */
+        nl = Math.max(-m.wPct / 2, Math.min(100 - m.wPct / 2, nl));
+        nt = Math.max(-m.hPct / 2, Math.min(100 - m.hPct / 2, nt));
+        this._setPct(m.el, nl, nt);
       });
 
       if (snapped.lv || snapped.lh) this._showSnap(snapped.lv, snapped.lh, sr, st.slide);
