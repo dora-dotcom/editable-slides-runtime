@@ -2427,22 +2427,84 @@
     try { return fn(vars); } catch (e) { return NaN; }
   }
 
-  /* The variables in scope on a slide: constants the author declared, then the
-   * levers, which win — a lever is the thing you are allowed to change. */
+  function parseAssignList(src) {
+    const out = [];
+    String(src || '').split(/[,;\n]/).forEach(function (pair) {
+      const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(-?[\d.]+)\s*$/.exec(pair);
+      if (m) out.push([m[1], parseFloat(m[2])]);
+    });
+    return out;
+  }
+
+  /* The state of a slide, in the order that resolves a name:
+   *
+   *   data-vars   what the author declared — the starting position of a model
+   *   data-state  what has happened since, written by the runtime
+   *   levers      a lever's own data-value, because a lever IS its value
+   *
+   * Later wins. Splitting the author's numbers from the session's is what makes
+   * "put it back" possible: clear data-state and the slide is as written. */
   function calcVars(slide) {
     const vars = Object.create(null);
     if (!slide) return vars;
-    const declared = slide.getAttribute('data-vars') || '';
-    declared.split(/[,;\n]/).forEach(function (pair) {
-      const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(-?[\d.]+)\s*$/.exec(pair);
-      if (m) vars[m[1]] = parseFloat(m[2]);
-    });
+    parseAssignList(slide.getAttribute('data-vars')).forEach(function (kv) { vars[kv[0]] = kv[1]; });
+    parseAssignList(slide.getAttribute('data-state')).forEach(function (kv) { vars[kv[0]] = kv[1]; });
     slide.querySelectorAll('[data-object-type="lever"][data-var]').forEach(function (lev) {
       const name = lev.getAttribute('data-var');
       const v = parseFloat(lev.getAttribute('data-value'));
       if (name && isFinite(v)) vars[name] = v;
     });
     return vars;
+  }
+
+  /* Writing a name. A lever owns its own value, so an assignment to a lever's
+   * name moves the lever — the slider follows, and there is still one place the
+   * number lives. Everything else goes to the slide's data-state, which is an
+   * attribute, which means it saves, exports and comes back like anything else
+   * in the document. */
+  function stateSet(slide, name, value) {
+    if (!slide || !name || !isFinite(value)) return;
+    const lever = slide.querySelector('[data-object-type="lever"][data-var="' + CSS.escape(name) + '"]');
+    if (lever) {
+      /* Clamped to the lever's own range: a button that says "R = 99" must not
+       * put the model somewhere the slider cannot express. */
+      const min = parseFloat(lever.getAttribute('data-min'));
+      const max = parseFloat(lever.getAttribute('data-max'));
+      let v = value;
+      if (isFinite(min)) v = Math.max(min, v);
+      if (isFinite(max)) v = Math.min(max, v);
+      lever.setAttribute('data-value', String(v));
+      return;
+    }
+    const live = parseAssignList(slide.getAttribute('data-state'));
+    let found = false;
+    for (let i = 0; i < live.length; i++) {
+      if (live[i][0] === name) { live[i][1] = value; found = true; break; }
+    }
+    if (!found) live.push([name, value]);
+    slide.setAttribute('data-state', live.map(function (kv) {
+      return kv[0] + '=' + (Math.round(kv[1] * 1e6) / 1e6);
+    }).join(', '));
+  }
+
+  /* "tab = 1; open = 0" — assignments only. There is nothing else to allow: the
+   * expression language has no side effects, so a handler cannot navigate, fetch,
+   * or touch the document except through the bindings below. That is the whole
+   * safety story, and it is why interactivity that arrived inside someone else's
+   * HTML can be run at all. */
+  function runStatements(slide, src) {
+    const vars = calcVars(slide);
+    let changed = false;
+    String(src || '').split(';').forEach(function (stmt) {
+      const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^=].*)$/.exec(stmt);
+      if (!m) return;
+      const v = calcRun(m[2], vars);
+      if (!isFinite(v)) return;
+      stateSet(slide, m[1], v);
+      vars[m[1]] = v;
+      changed = true;
+    });
+    return changed;
   }
 
   /* How a number is written. A consulting table is unreadable without this: the
@@ -2485,11 +2547,44 @@
    * The value goes in as text and the formula stays in the attribute — the same
    * split as a page number, and for the same reason: a deck opened anywhere,
    * with or without this runtime, shows the number it was last showing. */
-  function recalc(slide) {
-    if (!slide) return;
-    const vars = calcVars(slide);
-    slide.querySelectorAll('[data-calc]').forEach(function (el) {
-      const src = el.getAttribute('data-calc');
+  /* ---------- Bindings ----------
+   *
+   * A lever and a computed number turned out to be two instances of one thing:
+   * named state, and markup that reads it. So the general form is here, and the
+   * lever is now a convenient preset of it rather than a special case.
+   *
+   * Any element in a deck can declare:
+   *
+   *   data-bind-text="expr"          its text, through data-format
+   *   data-calc="expr"               the same thing, kept because it shipped
+   *   data-bind-show="expr"          present only while the expression is true
+   *   data-bind-class="on: expr; …"  a class per condition
+   *   data-bind-style-width="expr"   any CSS property, with data-bind-unit
+   *   data-bind-value="name"         an input that IS that piece of state
+   *   data-on-click="x = x + 1"      assignments, on click / input / change
+   *
+   * Which is enough for the interactive modules a deck actually wants — toggles,
+   * tabs, steppers, progress bars, conditional detail, a table that answers —
+   * with no JavaScript in the document and nothing for the runtime to execute.
+   * A deck's own <script> is never run by us: opening a file runs what the file
+   * contains, but nothing here helps it, and the restore path rebuilds a slide
+   * with innerHTML, which does not execute scripts. Interactivity that arrives
+   * from somewhere else is safe because it is declared, not programmed.
+   */
+  const BIND_DEFAULT_UNIT = {
+    width: '%', height: '%', left: '%', top: '%', right: '%', bottom: '%',
+    opacity: '', 'flex-grow': '', 'z-index': '', 'font-weight': ''
+  };
+
+  function bindStyleProp(attr) {
+    /* data-bind-style-border-radius → border-radius */
+    return attr.slice('data-bind-style-'.length);
+  }
+
+  function applyBindings(root, slide, vars) {
+    /* Text, and the number-in-a-sentence spelling of it. */
+    root.querySelectorAll('[data-calc], [data-bind-text]').forEach(function (el) {
+      const src = el.getAttribute('data-calc') || el.getAttribute('data-bind-text');
       if (!src) return;
       const v = calcRun(src, vars);
       el.textContent = calcFormat(v, el.getAttribute('data-format'));
@@ -2498,6 +2593,53 @@
       el.classList.toggle('calc-pos', isFinite(v) && v > 0);
       el.classList.toggle('calc-neg', isFinite(v) && v < 0);
     });
+
+    /* Present or not. `hidden` rather than a class, so a deck that never heard of
+     * this runtime still hides what the author said to hide. */
+    root.querySelectorAll('[data-bind-show]').forEach(function (el) {
+      const v = calcRun(el.getAttribute('data-bind-show'), vars);
+      el.hidden = !(isFinite(v) && v !== 0);
+    });
+
+    root.querySelectorAll('[data-bind-class]').forEach(function (el) {
+      String(el.getAttribute('data-bind-class') || '').split(';').forEach(function (rule) {
+        const m = /^\s*([A-Za-z_][\w-]*)\s*:\s*(.+)$/.exec(rule);
+        if (!m) return;
+        const v = calcRun(m[2], vars);
+        el.classList.toggle(m[1], isFinite(v) && v !== 0);
+      });
+    });
+
+    root.querySelectorAll('[data-bind-value]').forEach(function (el) {
+      const name = el.getAttribute('data-bind-value');
+      const v = vars[name];
+      if (!isFinite(v)) return;
+      if (el.type === 'checkbox') el.checked = v !== 0;
+      else if (String(el.value) !== String(v)) el.value = String(v);
+    });
+
+    /* Style bindings are found by walking the attributes, because the property
+     * name is part of the attribute name. */
+    root.querySelectorAll('*').forEach(function (el) {
+      if (!el.hasAttributes()) return;
+      const attrs = el.attributes;
+      for (let i = 0; i < attrs.length; i++) {
+        const a = attrs[i];
+        if (a.name.indexOf('data-bind-style-') !== 0) continue;
+        const prop = bindStyleProp(a.name);
+        const v = calcRun(a.value, vars);
+        if (!isFinite(v)) continue;
+        const unit = el.getAttribute('data-bind-unit');
+        const u = unit === null ? (prop in BIND_DEFAULT_UNIT ? BIND_DEFAULT_UNIT[prop] : 'px') : unit;
+        el.style.setProperty(prop, (Math.round(v * 1e4) / 1e4) + u);
+      }
+    });
+  }
+
+  function recalc(slide) {
+    if (!slide) return;
+    const vars = calcVars(slide);
+    applyBindings(slide, slide, vars);
     slide.querySelectorAll('[data-object-type="lever"]').forEach(paintLever);
     /* A chart can be part of the model too: any {formula} inside its data is
      * evaluated before it is drawn. */

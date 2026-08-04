@@ -35,6 +35,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import glob
+import os
 import re
 import sys
 from pathlib import Path
@@ -118,7 +120,11 @@ def main() -> int:
 
     targets: list[Path] = []
     for pattern in args.file:
-        matches = sorted(Path().glob(pattern)) if any(c in pattern for c in '*?[') else [Path(pattern)]
+        # glob.glob rather than Path().glob: the latter refuses an absolute
+        # pattern, and "refresh every deck in that folder" — the reason a glob
+        # is offered at all — is normally written as an absolute path.
+        matches = sorted(Path(m) for m in glob.glob(os.path.expanduser(pattern))) \
+            if any(c in pattern for c in '*?[') else [Path(pattern).expanduser()]
         targets.extend(matches)
     if not targets:
         print('no files matched', file=sys.stderr)
