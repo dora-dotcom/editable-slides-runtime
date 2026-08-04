@@ -489,9 +489,12 @@
       };
       this._clearSnap();
 
-      document.addEventListener('pointermove', this._onDocPointerMove);
-      document.addEventListener('pointerup', this._onDocPointerUp);
-      document.addEventListener('pointercancel', this._onDocPointerUp);
+      /* Capture on window, for the reason the rotate handle has: a gesture that
+       * something else swallows, or that leaves the page, still belongs to this
+       * drag. */
+      window.addEventListener('pointermove', this._onDocPointerMove, true);
+      window.addEventListener('pointerup', this._onDocPointerUp, true);
+      window.addEventListener('pointercancel', this._onDocPointerUp, true);
       try { e.target.setPointerCapture(e.pointerId); } catch (_) {}
     }
 
@@ -530,9 +533,9 @@
         hadWidthPct: wPct != null,
         hadHeightPct: hPct != null
       };
-      document.addEventListener('pointermove', this._onResizeMove);
-      document.addEventListener('pointerup', this._onResizeUp);
-      document.addEventListener('pointercancel', this._onResizeUp);
+      window.addEventListener('pointermove', this._onResizeMove, true);
+      window.addEventListener('pointerup', this._onResizeUp, true);
+      window.addEventListener('pointercancel', this._onResizeUp, true);
       try { e.target.setPointerCapture(e.pointerId); } catch (_) {}
     }
 
@@ -613,9 +616,9 @@
         });
       }
       this._resizeState = null;
-      document.removeEventListener('pointermove', this._onResizeMove);
-      document.removeEventListener('pointerup', this._onResizeUp);
-      document.removeEventListener('pointercancel', this._onResizeUp);
+      window.removeEventListener('pointermove', this._onResizeMove, true);
+      window.removeEventListener('pointerup', this._onResizeUp, true);
+      window.removeEventListener('pointercancel', this._onResizeUp, true);
     }
 
     _startRotate(e, obj) {
@@ -629,9 +632,12 @@
         cy: r.top + r.height / 2,
         before: obj.style.transform
       };
-      document.addEventListener('pointermove', this._onRotateMove);
-      document.addEventListener('pointerup', this._onRotateUp);
-      document.addEventListener('pointercancel', this._onRotateUp);
+      /* Capture, so nothing between the handle and the document can swallow the
+       * move. window rather than document because a gesture that leaves the
+       * page still belongs to this drag. */
+      window.addEventListener('pointermove', this._onRotateMove, true);
+      window.addEventListener('pointerup', this._onRotateUp, true);
+      window.addEventListener('pointercancel', this._onRotateUp, true);
       try { e.target.setPointerCapture(e.pointerId); } catch (_) {}
     }
 
@@ -647,7 +653,19 @@
       while (deg > 180) deg -= 360;
       while (deg <= -180) deg += 360;
       st.el.style.transform = deg === 0 ? '' : 'rotate(' + deg + 'deg)';
-      syncInspector();
+      let tag = document.getElementById('deckAngleTag');
+      if (!tag) {
+        tag = document.createElement('div');
+        tag.id = 'deckAngleTag';
+        tag.className = 'deck-angle-tag';
+        document.body.appendChild(tag);
+      }
+      tag.textContent = deg + '\u00B0';
+      tag.style.left = (e.clientX + 14) + 'px';
+      tag.style.top = (e.clientY - 10) + 'px';
+      tag.classList.add('is-on');
+      const field = document.querySelector('[data-geom="rotate"]');
+      if (field && document.activeElement !== field) field.value = deg;
     }
 
     _onRotateUp() {
@@ -663,10 +681,13 @@
         });
         updateUndoRedoChrome();
       }
+      const tag = document.getElementById('deckAngleTag');
+      if (tag) tag.classList.remove('is-on');
+      syncInspector();
       this._rotateState = null;
-      document.removeEventListener('pointermove', this._onRotateMove);
-      document.removeEventListener('pointerup', this._onRotateUp);
-      document.removeEventListener('pointercancel', this._onRotateUp);
+      window.removeEventListener('pointermove', this._onRotateMove, true);
+      window.removeEventListener('pointerup', this._onRotateUp, true);
+      window.removeEventListener('pointercancel', this._onRotateUp, true);
     }
 
     _otherObjects(slide, excludeSet) {
@@ -807,9 +828,9 @@
 
       this._dragState = null;
       this._clearSnap();
-      document.removeEventListener('pointermove', this._onDocPointerMove);
-      document.removeEventListener('pointerup', this._onDocPointerUp);
-      document.removeEventListener('pointercancel', this._onDocPointerUp);
+      window.removeEventListener('pointermove', this._onDocPointerMove, true);
+      window.removeEventListener('pointerup', this._onDocPointerUp, true);
+      window.removeEventListener('pointercancel', this._onDocPointerUp, true);
     }
 
     _syncRteButtons() {

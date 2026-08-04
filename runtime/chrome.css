@@ -209,7 +209,7 @@ body.deck-edit-mode .slide-object { outline-color: color-mix(in srgb, var(--deck
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--deck-chrome-accent) 25%, transparent);
 }
 
-.slide-object-move {
+.slide-object-move { touch-action: none; 
   position: absolute; left: -22px; top: 4px; width: 20px; height: 28px;
   border: 1px solid var(--deck-chrome-border); border-radius: 6px; background: var(--deck-chrome-bg);
   color: var(--deck-chrome-muted); font-size: 12px; line-height: 1; padding: 0; cursor: grab;
@@ -229,6 +229,10 @@ body.deck-edit-mode .slide-object-move { display: flex; }
   position: absolute; width: var(--h); height: var(--h);
   border-radius: calc(3px / var(--canvas-zoom, 1));
   background: var(--deck-chrome-accent);
+  /* Without this a trackpad drag is a candidate for panning, and the browser
+     ends the gesture with pointercancel — which is the same event that ends a
+     resize or a rotate, so the whole thing quietly stopped a few pixels in. */
+  touch-action: none;
   display: none; z-index: 4;
   border: calc(1px / var(--canvas-zoom, 1)) solid var(--deck-chrome-surface, #fff);
   padding: 0; box-sizing: border-box;
@@ -254,8 +258,16 @@ body.deck-edit-mode .slide-object.is-selected .slide-object-resize { display: bl
   width: var(--r); height: var(--r); border-radius: 50%;
   background: var(--deck-chrome-surface, #fff);
   border: calc(2px / var(--canvas-zoom, 1)) solid var(--deck-chrome-accent);
+  touch-action: none;
   display: none; z-index: 5; padding: 0; box-sizing: border-box;
   cursor: grab;
+}
+/* A thirteen-pixel circle is a small thing to aim at, so it carries an
+   invisible ring: the target is comfortable without the mark being loud. */
+.slide-object-rotate::after {
+  content: ''; position: absolute;
+  inset: calc(-9px / var(--canvas-zoom, 1));
+  border-radius: 50%;
 }
 .slide-object-rotate:active { cursor: grabbing; }
 .slide-object-rotate::before {
@@ -1444,3 +1456,15 @@ body:not(.deck-edit-mode) .slides-offset [data-link] { cursor: pointer; }
    one of them mysteriously doing nothing. */
 .rte-toolbar button:disabled { opacity: 0.35; cursor: default; }
 .rte-toolbar button:disabled:hover { background: var(--ui-surface, #fff); }
+
+/* The angle, beside the pointer while turning. A gesture you cannot see
+   working is indistinguishable from one that is not working. */
+.deck-angle-tag {
+  position: fixed; z-index: 10050; display: none;
+  padding: 3px 7px; border-radius: 6px;
+  background: var(--deck-chrome-accent, #1b1c1f); color: #fff;
+  font: 500 11px/1 var(--font-mono, ui-monospace, Menlo, monospace);
+  letter-spacing: 0.03em; pointer-events: none;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.22);
+}
+.deck-angle-tag.is-on { display: block; }
