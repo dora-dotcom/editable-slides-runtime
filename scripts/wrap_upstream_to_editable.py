@@ -42,7 +42,7 @@ def load_runtime():
         'viewport':    (RT / 'viewport-base.css').read_text(),
         'chrome_css':  (RT / 'chrome.css').read_text(),
         'chrome_html': (RT / 'chrome.html').read_text(),
-        'runtime_js':  (RT / 'runtime.js').read_text(),
+        'runtime_js':  runtime_js(RT),
     }
 
 

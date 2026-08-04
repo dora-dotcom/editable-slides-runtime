@@ -63,7 +63,10 @@ Four rules, and they are the whole contract:
 4. **Objects sit inside `.slide-edit-layer`.** Anything outside it is
    background: rendered, never selectable, never dragged.
 
-The move and resize handles are added by the runtime; you do not write them.
+The handles are added by the runtime; you do not write them. They are not part of
+the object either — the runtime draws a control box into the slide, around
+whatever is selected — so a deck's markup says nothing about them, and a deck
+that arrived carrying handles from an older version has them taken out on load.
 
 ---
 

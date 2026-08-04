@@ -24,6 +24,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from runtime_js import runtime_js  # noqa: E402
+
 
 # Chrome class/ID names that the runtime depends on. If the source CSS or HTML
 # already uses these, the human needs to disambiguate after porting.
@@ -51,7 +54,7 @@ def load_parts(runtime_dir: Path) -> dict:
         'viewport_css': (runtime_dir / 'viewport-base.css').read_text(encoding='utf-8'),
         'chrome_css':   (runtime_dir / 'chrome.css').read_text(encoding='utf-8'),
         'chrome_html':  (runtime_dir / 'chrome.html').read_text(encoding='utf-8'),
-        'runtime_js':   (runtime_dir / 'runtime.js').read_text(encoding='utf-8'),
+        'runtime_js':   runtime_js(runtime_dir),
     }
 
 

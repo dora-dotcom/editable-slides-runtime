@@ -217,67 +217,45 @@ body.deck-edit-mode .slide-object { outline-color: color-mix(in srgb, var(--deck
 }
 body.deck-edit-mode .slide-object-move { display: flex; }
 
-/* Eight handles and a stub to turn by. The accent, because they are the tool
-   speaking — and sized against the screen rather than the slide.
-   The canvas is zoomed to fit, so an 11px handle came out at six or seven
-   real pixels: present, correct, and too small to see or to hit. Everything
-   here divides by the zoom so a handle is the same size to the hand at every
-   zoom level. */
-.slide-object-resize {
-  --h: calc(11px / var(--canvas-zoom, 1));
-  --off: calc(-6px / var(--canvas-zoom, 1));
-  position: absolute; width: var(--h); height: var(--h);
-  border-radius: calc(3px / var(--canvas-zoom, 1));
-  background: var(--deck-chrome-accent);
-  /* Without this a trackpad drag is a candidate for panning, and the browser
-     ends the gesture with pointercancel — which is the same event that ends a
-     resize or a rotate, so the whole thing quietly stopped a few pixels in. */
-  touch-action: none;
-  display: none; z-index: 4;
-  border: calc(1px / var(--canvas-zoom, 1)) solid var(--deck-chrome-surface, #fff);
-  padding: 0; box-sizing: border-box;
-  box-shadow: 0 0 0 calc(1px / var(--canvas-zoom, 1)) rgba(0,0,0,0.18);
-}
-.slide-object-resize[data-resize="nw"] { left: var(--off);  top: var(--off); }
-.slide-object-resize[data-resize="n"] { left: 50%; top: var(--off); margin-left: calc(var(--h) / -2); }
-.slide-object-resize[data-resize="ne"] { right: var(--off); top: var(--off); }
-.slide-object-resize[data-resize="e"] { right: var(--off); top: 50%; margin-top: calc(var(--h) / -2); }
-.slide-object-resize[data-resize="se"] { right: var(--off); bottom: var(--off); }
-.slide-object-resize[data-resize="s"] { left: 50%; bottom: var(--off); margin-left: calc(var(--h) / -2); }
-.slide-object-resize[data-resize="sw"] { left: var(--off);  bottom: var(--off); }
-.slide-object-resize[data-resize="w"] { left: var(--off);  top: 50%; margin-top: calc(var(--h) / -2); }
-body.deck-edit-mode .slide-object.is-selected .slide-object-resize { display: block; }
+/* === The handles ===
+   Moveable draws them, into the slide, so what is left to say here is what they
+   should look like. Its own stylesheet answers to --moveable-color, which is
+   pointed at the deck's accent so the tool speaks in the deck's voice.
 
-/* Round, and held off the top edge on a short stalk, so it never reads as one
-   more thing to drag the corner with. */
-.slide-object-rotate {
-  --r: calc(13px / var(--canvas-zoom, 1));
-  position: absolute; left: 50%;
-  top: calc(-30px / var(--canvas-zoom, 1));
-  margin-left: calc(var(--r) / -2);
-  width: var(--r); height: var(--r); border-radius: 50%;
-  background: var(--deck-chrome-surface, #fff);
-  border: calc(2px / var(--canvas-zoom, 1)) solid var(--deck-chrome-accent);
+   Sized against the screen rather than against the slide: the canvas is zoomed
+   to fit, so an 11px handle came out at six or seven real pixels — present,
+   correct, and too small to see or to hit. The rig passes zoom: 1/k for exactly
+   this reason, and the numbers below are what that scales.
+
+   `touch-action: none` matters more than it looks: without it a trackpad drag
+   is a candidate for panning and the browser ends the gesture a few pixels in,
+   which is how rotation came to look broken while being implemented correctly. */
+/* The class is doubled on purpose. The library writes its own stylesheet into
+   the head when the first handle is drawn — after this file, whatever order the
+   deck was assembled in — so at equal specificity its defaults win and none of
+   this would land. */
+.moveable-control-box.moveable-control-box {
+  --moveable-color: var(--deck-chrome-accent);
   touch-action: none;
-  display: none; z-index: 5; padding: 0; box-sizing: border-box;
+}
+.moveable-control-box.moveable-control-box .moveable-control {
+  touch-action: none;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.18);
+}
+/* Square for sizing, round for turning — the same distinction the hand-drawn
+   handles made, because a corner and an angle are not the same gesture. */
+.moveable-control-box.moveable-control-box .moveable-direction {
+  border-radius: 3px;
+  background: var(--deck-chrome-accent);
+  border: 1px solid var(--deck-chrome-surface, #fff);
+}
+.moveable-control-box.moveable-control-box .moveable-rotation .moveable-control,
+.moveable-control-box.moveable-control-box .moveable-rotation-control {
+  background: var(--deck-chrome-surface, #fff);
+  border: 2px solid var(--deck-chrome-accent);
+  border-radius: 50%;
   cursor: grab;
 }
-/* A thirteen-pixel circle is a small thing to aim at, so it carries an
-   invisible ring: the target is comfortable without the mark being loud. */
-.slide-object-rotate::after {
-  content: ''; position: absolute;
-  inset: calc(-9px / var(--canvas-zoom, 1));
-  border-radius: 50%;
-}
-.slide-object-rotate:active { cursor: grabbing; }
-.slide-object-rotate::before {
-  content: ''; position: absolute; left: 50%; top: 100%;
-  width: calc(1px / var(--canvas-zoom, 1));
-  height: calc(18px / var(--canvas-zoom, 1));
-  margin-left: calc(-0.5px / var(--canvas-zoom, 1));
-  background: var(--deck-chrome-accent); opacity: 0.55;
-}
-body.deck-edit-mode .slide-object.is-selected .slide-object-rotate { display: block; }
 
 .slide-object-text {
   min-height: 1.2em; outline: none; font-size: var(--body-size);
@@ -447,7 +425,7 @@ body.deck-edit-mode [data-fx-enter] { opacity: 1 !important; transform: none !im
 .deck-stood-down .rte-toolbar,
 .deck-stood-down .deck-present-bar,
 .deck-stood-down .slide-object-move,
-.deck-stood-down .slide-object-resize,
+.deck-stood-down .moveable-control-box,
 .deck-stood-down .slide-object-tablectl,
 .deck-stood-down .slide-object-chartctl { display: none !important; }
 .deck-stood-down .slide-object { pointer-events: none; }
@@ -478,7 +456,7 @@ body.deck-presenting .slide-sidebar,
 body.deck-presenting .rte-toolbar,
 body.deck-presenting .nav-dots,
 body.deck-presenting .slide-object-move,
-body.deck-presenting .slide-object-resize { display: none !important; }
+body.deck-presenting .moveable-control-box { display: none !important; }
 body.deck-presenting .slides-offset { padding: 0 !important; }
 
 /* Presenting shows exactly one slide. Native snapping does it without the

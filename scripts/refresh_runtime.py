@@ -39,6 +39,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from runtime_js import runtime_js  # noqa: E402
+
 # The marker has been spelled two ways: the original, and the "(our editable
 # runtime)" variant introduced by the in-progress re-wrap. Match both.
 CSS_START_RE = re.compile(r'/\* === viewport-base\.css[^=]*=== \*/')
@@ -98,7 +101,7 @@ def load_runtime(runtime_dir: Path) -> dict[str, str]:
         'viewport_css': (runtime_dir / 'viewport-base.css').read_text(encoding='utf-8'),
         'chrome_css': (runtime_dir / 'chrome.css').read_text(encoding='utf-8'),
         'chrome_html': (runtime_dir / 'chrome.html').read_text(encoding='utf-8'),
-        'runtime_js': (runtime_dir / 'runtime.js').read_text(encoding='utf-8'),
+        'runtime_js': runtime_js(runtime_dir),
     }
 
 

@@ -15,6 +15,19 @@ will wrap any of them to the contract.
 The Simular AI design moved to its own private repository, since it carries a
 company's brand rather than an open-source design.
 
+## Vendored code
+
+One library ships inside the runtime, and therefore inside every deck built with
+it.
+
+| What | Where it lives | Version | License | Why |
+|---|---|---|---|---|
+| **Moveable** — [daybrush/moveable](https://github.com/daybrush/moveable) | `runtime/vendor/moveable.min.js` | 0.53.0 | MIT | Dragging, sizing and turning objects. It is what Bento uses for the same job, and four hand-written attempts at the same arithmetic were wrong in four different ways. See the `GestureRig` comment in `runtime/runtime.js`. |
+
+It is inlined ahead of the runtime by `scripts/runtime_js.py`, which every
+builder reads its JavaScript through, so a deck assembled any way carries the
+same bundle. Upgrading it is: replace the file, run `refresh_runtime.py`.
+
 ---
 
 This repository contains both original templates and templates derived from external open-source sources. All derived templates are credited below with links to their original location and license.

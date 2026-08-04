@@ -51,6 +51,10 @@
      * and told you it had saved something you had not done. */
     _changed() {
       if (typeof scheduleSave === 'function') scheduleSave();
+      /* Undo can move the thing the handles are drawn around, and the handles
+       * are drawn from a measurement rather than from the DOM, so they have to
+       * be told. Every change to the deck passes through here. */
+      if (typeof rigTouch === 'function') rigTouch();
       this._onChange();
     }
     push(record) {
@@ -208,49 +212,28 @@
     });
   }
 
-  const RESIZE_DIRS = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+  const MOVEABLE_DIRS = ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se'];
 
   function objectAngle(el) {
     const m = ((el && el.style.transform) || '').match(/rotate\(\s*(-?[\d.]+)deg/);
     return m ? parseFloat(m[1]) : 0;
   }
 
-  function ensureResizeHandles(root) {
+  /* Handles used to be eight buttons and a rotate stub inside every object,
+   * with the arithmetic that moved them written out in this file. Moveable
+   * draws and drives them now — see GestureRig — and it draws them into the
+   * slide rather than into the object, so nothing here has to make them.
+   *
+   * What an object does still need is the grip a text box is dragged by, so
+   * that a click in the words stays a click in the words.
+   *
+   * Decks written before this change carry the old buttons baked into their
+   * markup — exports did not strip them for a long time — so they are taken
+   * out here, wherever they came from. */
+  function ensureObjectGrips(root) {
     const el = root || document;
+    el.querySelectorAll('.slide-object-resize, .slide-object-rotate').forEach((n) => n.remove());
     el.querySelectorAll('[data-slide-object]').forEach((obj) => {
-      /* Eight, not one. A single corner meant an object could only ever grow
-       * down and to the right — to trim the top of a box you had to move it as
-       * well, and get both right. */
-      /* All eight or none: a deck carrying handles from an older runtime — and
-       * they were carried, because exports never stripped them — would
-       * otherwise keep its single stale one and never get the rest. */
-      const have = obj.querySelectorAll('.slide-object-resize');
-      const complete = have.length === RESIZE_DIRS.length && RESIZE_DIRS.every(
-        (d) => obj.querySelector('.slide-object-resize[data-resize="' + d + '"]'));
-      if (!complete) {
-        have.forEach((h) => h.remove());
-        RESIZE_DIRS.forEach((dir) => {
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'slide-object-resize';
-          btn.setAttribute('data-resize', dir);
-          btn.setAttribute('aria-label', 'Resize ' + dir);
-          obj.appendChild(btn);
-        });
-      }
-      /* Turning something is a thing you do by turning it. The panel's Angle
-       * field stays, for when a number is what you mean. */
-      if (!obj.querySelector('.slide-object-rotate')) {
-        const rot = document.createElement('button');
-        rot.type = 'button';
-        rot.className = 'slide-object-rotate';
-        rot.setAttribute('aria-label', 'Rotate');
-        obj.appendChild(rot);
-      }
-      // A document arrives with objects but no handles — only ones inserted by
-      // the editor carried them, so half a deck could be dragged and half
-      // could not. Both handles are affordances, not content: added here,
-      // stripped on save and export.
       if (!obj.querySelector('.slide-object-move')) {
         const mv = document.createElement('button');
         mv.type = 'button';
@@ -265,13 +248,352 @@
   // Tables and charts carry their own control strips. Those are editor
   // furniture, stripped on save and export (see sanitizeEditableState), so they
   // are rebuilt here whenever a document is loaded or restored — the same
-  // contract ensureResizeHandles has.
+  // contract ensureObjectGrips has.
   function ensureObjectControls(root) {
     const el = root || document;
     /* The table's own strip is gone: rows and columns are in the panel, with a
      * count beside them, and two places to do one thing is one too many. Any
      * strip a document arrived carrying is taken out here. */
     el.querySelectorAll('.slide-object-tablectl, .slide-object-chartctl').forEach((strip) => strip.remove());
+  }
+
+  /* ---------- Moving, sizing and turning things: Moveable ----------
+   *
+   * This was written by hand here, and it was wrong four times in a row, each
+   * time in the same family of ways: layout pixels mixed with on-screen ones,
+   * percent-of-width mixed with percent-of-height, a rotated box's anchor
+   * corner computed in the wrong frame, a trackpad gesture the browser
+   * cancelled a few pixels in. Every fix passed its test and still felt wrong
+   * in the hand.
+   *
+   * So it is Moveable's job now (MIT, github.com/daybrush/moveable), which is
+   * what Bento uses and what this arithmetic has been an inferior copy of all
+   * along. It costs about 240 KB inside every deck, which is real — a deck being
+   * one file you can send is the whole point of this project — and it buys
+   * gestures that behave, on a trackpad, on a rotated object, at any zoom.
+   *
+   * Two things make it fit a runtime that thinks in percent:
+   *
+   *   1. The control box is drawn INTO the slide. The canvas is zoomed with CSS
+   *      `zoom`, and mounting the box anywhere outside that zoom put it ten
+   *      pixels to the right of the object it belonged to. Inside, the zoom
+   *      cancels and it lands exactly. `zoom: 1/k` then keeps the handles a
+   *      constant size on screen rather than shrinking with the slide.
+   *   2. Nothing Moveable reports is applied as a transform. It hands back
+   *      distances in layout pixels; those are divided by the slide's own
+   *      layout size and written as percentages, so the deck's geometry stays
+   *      exactly what CONTRACT.md says it is and a rotated object keeps
+   *      `transform: rotate()` and nothing else.
+   *
+   * Because the box lives inside the slide it is document furniture, and like
+   * every other piece of editor furniture it is stripped on save and export.
+   */
+  class GestureRig {
+    constructor(editor, history) {
+      this.editor = editor;
+      this.history = history;
+      this.mv = null;
+      this.slide = null;
+      this.sig = '';
+      this.busy = false;
+      this.start = null;
+    }
+
+    /* The library is inlined above this runtime. If a deck was assembled
+     * without it, selection and the panel still work — the deck is not broken,
+     * it just cannot be dragged. */
+    ready() { return typeof window.Moveable === 'function'; }
+
+    /* Screen pixels per layout pixel. Everything Moveable reports is in layout
+     * pixels, which is the same space slide.offsetWidth is in, so this factor
+     * is only ever needed to keep handles and snap distances feeling the same
+     * size on screen at any zoom. */
+    _k(slide) {
+      const w = slide.offsetWidth;
+      return w ? slide.getBoundingClientRect().width / w : 1;
+    }
+    _w() { return (this.slide && this.slide.offsetWidth) || 1; }
+    _h() { return (this.slide && this.slide.offsetHeight) || 1; }
+
+    attach(list) {
+      if (!this.ready()) return;
+      const objs = (list || []).filter(
+        (o) => o && document.contains(o) && o.closest('section.slide'));
+      if (!objs.length) { this.detach(); return; }
+      const slide = objs[0].closest('section.slide');
+      const same = objs.filter((o) => o.closest('section.slide') === slide);
+      const mode = same.length > 1 ? 'group'
+        : same[0].getAttribute('data-object-type') === 'text' ? 'text' : 'solid';
+      const sig = mode + '|' + same.map((o) => o.getAttribute('data-oid') || '?').join(',');
+      /* Rebuilding during a gesture would pull the instance out from under the
+       * gesture running on it. Selection does not change mid-drag, but the
+       * panel refreshes at the end of one and that arrives here. */
+      if (this.busy || (this.mv && this.slide === slide && this.sig === sig)) {
+        this.update();
+        return;
+      }
+      this._build(slide, same, mode);
+    }
+
+    detach() {
+      if (this.mv) { try { this.mv.destroy(); } catch (_) {} }
+      this.mv = null;
+      this.slide = null;
+      this.sig = '';
+    }
+
+    /* Called when the geometry under the box changes without a gesture: a zoom
+     * step, a panel field, an undo. */
+    update() {
+      if (!this.mv || !this.slide) return;
+      try {
+        this.mv.zoom = 1 / this._k(this.slide);
+        this.mv.elementGuidelines = this._guidelines();
+        this.mv.updateRect();
+      } catch (_) {}
+    }
+
+    /* Snap to the other objects on this slide, and to the slide's own middle.
+     * The set is recomputed rather than remembered because objects come and go. */
+    _guidelines() {
+      if (!this.slide) return [];
+      const mine = this.mv && this.mv.target;
+      const own = mine ? (mine.length ? Array.prototype.slice.call(mine) : [mine]) : [];
+      return Array.prototype.slice.call(this.slide.querySelectorAll('[data-slide-object]'))
+        .filter((o) => own.indexOf(o) === -1);
+    }
+
+    _build(slide, objs, mode) {
+      this.detach();
+      const single = objs.length === 1 ? objs[0] : null;
+      const k = this._k(slide);
+      const opts = {
+        target: single || objs,
+        draggable: true,
+        resizable: true,
+        /* Turning a group would have to turn each object about the group's
+         * centre, which is a thing this editor has never offered. One at a
+         * time. */
+        rotatable: !!single,
+        origin: false,
+        keepRatio: false,
+        renderDirections: MOVEABLE_DIRS,
+        zoom: 1 / k,
+        throttleDrag: 0,
+        throttleResize: 0,
+        throttleRotate: 0,
+        /* Nothing may re-measure mid-gesture: the handlers below move the
+         * element themselves, and a library that noticed would count the same
+         * movement twice. */
+        useResizeObserver: false,
+        useMutationObserver: false,
+        snappable: true,
+        snapDirections: { center: true, middle: true },
+        elementSnapDirections: {
+          top: true, left: true, bottom: true, right: true, center: true, middle: true
+        },
+        snapThreshold: SNAP_PX / k,
+        isDisplaySnapDigit: false,
+        minWidth: Math.round(slide.offsetWidth * RESIZE_MIN_FRAC),
+        minHeight: Math.round(slide.offsetHeight * RESIZE_MIN_FRAC)
+      };
+      /* A text object is dragged by its grip. Everything else is dragged by
+       * itself, because there is nothing inside it to click into. */
+      if (mode === 'text') {
+        const grip = single.querySelector('.slide-object-move');
+        if (grip) opts.dragTarget = grip;
+      }
+      this.mv = new window.Moveable(slide, opts);
+      this.slide = slide;
+      this.sig = mode + '|' + objs.map((o) => o.getAttribute('data-oid') || '?').join(',');
+      this.mv.elementGuidelines = this._guidelines();
+      this._wire(objs);
+    }
+
+    /* The four numbers a gesture is allowed to change, exactly as they are
+     * written on the element — read from the style rather than measured, so a
+     * gesture starts from where the deck says the object is and not from a
+     * rounded-off pixel box. */
+    _frames(objs) {
+      const slide = this.slide;
+      const ed = this.editor;
+      return objs.map((el) => {
+        const w = pct(el, 'width');
+        const h = pct(el, 'height');
+        return {
+          el,
+          l: ed._positionPct(el, slide, 'left'),
+          t: ed._positionPct(el, slide, 'top'),
+          w: w == null ? (el.offsetWidth / this._w()) * 100 : w,
+          h: h == null ? (el.offsetHeight / this._h()) * 100 : h,
+          css: {
+            left: el.style.left, top: el.style.top,
+            width: el.style.width, height: el.style.height,
+            transform: el.style.transform
+          }
+        };
+      });
+    }
+
+    _begin(objs) {
+      this.busy = true;
+      this.start = { frames: this._frames(objs) };
+    }
+
+    /* One undo entry per gesture, covering all four properties, because sizing
+     * from a top or left edge moves the object as well. */
+    _end() {
+      const st = this.start;
+      this.busy = false;
+      this.start = null;
+      if (!st) return;
+      const before = st.frames.map((f) => ({ el: f.el, css: f.css }));
+      const after = st.frames.map((f) => ({
+        el: f.el,
+        css: {
+          left: f.el.style.left, top: f.el.style.top,
+          width: f.el.style.width, height: f.el.style.height,
+          transform: f.el.style.transform
+        }
+      }));
+      const apply = (rows) => rows.forEach((r) => {
+        r.el.style.left = r.css.left;
+        r.el.style.top = r.css.top;
+        r.el.style.width = r.css.width;
+        r.el.style.height = r.css.height;
+        r.el.style.transform = r.css.transform;
+      });
+      const moved = after.some((a, i) => {
+        const b = before[i].css;
+        return a.css.left !== b.left || a.css.top !== b.top ||
+          a.css.width !== b.width || a.css.height !== b.height ||
+          a.css.transform !== b.transform;
+      });
+      if (moved) {
+        this.history.push({
+          undo: () => { apply(before); this.update(); if (typeof syncInspector === 'function') syncInspector(); },
+          redo: () => { apply(after); this.update(); if (typeof syncInspector === 'function') syncInspector(); }
+        });
+        if (typeof updateUndoRedoChrome === 'function') updateUndoRedoChrome();
+      }
+      if (typeof syncInspector === 'function') syncInspector();
+      this.update();
+    }
+
+    _frameFor(el) {
+      const st = this.start;
+      if (!st) return null;
+      for (let i = 0; i < st.frames.length; i++) if (st.frames[i].el === el) return st.frames[i];
+      return null;
+    }
+
+    /* The centre stays on the slide, not the whole object: bleeding off an edge
+     * is ordinary layout, while losing something off the side is not. */
+    _place(f, lPct, tPct) {
+      const l = Math.max(-f.w / 2, Math.min(100 - f.w / 2, lPct));
+      const t = Math.max(-f.h / 2, Math.min(100 - f.h / 2, tPct));
+      this.editor._setPct(f.el, l, t);
+    }
+
+    _moveBy(f, dxPx, dyPx) {
+      this._place(f, f.l + (dxPx / this._w()) * 100, f.t + (dyPx / this._h()) * 100);
+    }
+
+    _sizeTo(f, dwPx, dhPx, dxPx, dyPx) {
+      f.el.style.width = (f.w + (dwPx / this._w()) * 100) + '%';
+      f.el.style.height = (f.h + (dhPx / this._h()) * 100) + '%';
+      /* No clamp on a resize: the anchor corner Moveable is holding still was
+       * computed for exactly this position, and moving the object away from it
+       * afterwards is what the drift was. */
+      this.editor._setPct(
+        f.el,
+        f.l + (dxPx / this._w()) * 100,
+        f.t + (dyPx / this._h()) * 100
+      );
+    }
+
+    _turn(f, deg, ev) {
+      f.el.style.transform = deg === 0 ? '' : 'rotate(' + deg + 'deg)';
+      let tag = document.getElementById('deckAngleTag');
+      if (!tag) {
+        tag = document.createElement('div');
+        tag.id = 'deckAngleTag';
+        tag.className = 'deck-angle-tag';
+        document.body.appendChild(tag);
+      }
+      tag.textContent = deg + '°';
+      if (ev) {
+        tag.style.left = (ev.clientX + 14) + 'px';
+        tag.style.top = (ev.clientY - 10) + 'px';
+      }
+      tag.classList.add('is-on');
+      const field = document.querySelector('[data-geom="rotate"]');
+      if (field && document.activeElement !== field) field.value = deg;
+    }
+
+    _wire(objs) {
+      const mv = this.mv;
+      const rig = this;
+      const targets = objs.slice();
+
+      const begin = () => rig._begin(targets);
+      const finish = () => {
+        const tag = document.getElementById('deckAngleTag');
+        if (tag) tag.classList.remove('is-on');
+        rig._end();
+      };
+
+      /* Moveable reports a group gesture twice: once for the group and once per
+       * member. The group event carries the distance every member shares, which
+       * is what moving a selection means here. */
+      const dragDist = (e) => e.dist || (e.events && e.events[0] && e.events[0].dist) || [0, 0];
+
+      mv.on('dragStart', begin).on('dragGroupStart', begin);
+      mv.on('drag', (e) => {
+        const f = rig._frameFor(e.target);
+        if (f) rig._moveBy(f, e.dist[0], e.dist[1]);
+      });
+      mv.on('dragGroup', (e) => {
+        const d = dragDist(e);
+        (rig.start ? rig.start.frames : []).forEach((f) => rig._moveBy(f, d[0], d[1]));
+      });
+      mv.on('dragEnd', finish).on('dragGroupEnd', finish);
+
+      mv.on('resizeStart', begin).on('resizeGroupStart', begin);
+      mv.on('resize', (e) => {
+        const f = rig._frameFor(e.target);
+        if (f) rig._sizeTo(f, e.dist[0], e.dist[1], e.drag.dist[0], e.drag.dist[1]);
+      });
+      mv.on('resizeGroup', (e) => {
+        (e.events || []).forEach((ev) => {
+          const f = rig._frameFor(ev.target);
+          if (f) rig._sizeTo(f, ev.dist[0], ev.dist[1], ev.drag.dist[0], ev.drag.dist[1]);
+        });
+      });
+      mv.on('resizeEnd', finish).on('resizeGroupEnd', finish);
+
+      mv.on('rotateStart', begin);
+      mv.on('rotate', (e) => {
+        const f = rig._frameFor(e.target);
+        if (!f) return;
+        /* Shift snaps to fifteen degrees, the way it does in every drawing
+         * tool, because that is where the useful angles are. */
+        let deg = e.inputEvent && e.inputEvent.shiftKey
+          ? Math.round(e.rotation / 15) * 15
+          : Math.round(e.rotation);
+        while (deg > 180) deg -= 360;
+        while (deg <= -180) deg += 360;
+        rig._turn(f, deg, e.inputEvent);
+      });
+      mv.on('rotateEnd', finish);
+
+      /* Shift keeps the proportions while sizing — decided when the gesture
+       * starts, which is when the hand is already on the handle. */
+      mv.on('resizeStart', (e) => {
+        mv.keepRatio = !!(e.inputEvent && e.inputEvent.shiftKey);
+      });
+      mv.on('resizeEnd', () => { mv.keepRatio = false; });
+    }
   }
 
   /* ---------- Editor: select, drag, resize, snap, RTE ---------- */
@@ -281,18 +603,10 @@
       this.history = history;
       this.active = false;
       this.selected = new Set();
-      this._dragState = null;
-      this._resizeState = null;
-      this._snapEls = [];
+      this.rig = new GestureRig(this, history);
 
       this.toolbar = document.getElementById('rteToolbar');
       this._onDocPointerDown = this._onDocPointerDown.bind(this);
-      this._onDocPointerMove = this._onDocPointerMove.bind(this);
-      this._onDocPointerUp = this._onDocPointerUp.bind(this);
-      this._onResizeMove = this._onResizeMove.bind(this);
-      this._onResizeUp = this._onResizeUp.bind(this);
-      this._onRotateMove = this._onRotateMove.bind(this);
-      this._onRotateUp = this._onRotateUp.bind(this);
       this._onSelectionChange = this._onSelectionChange.bind(this);
       this._onFocusIn = this._onFocusIn.bind(this);
     }
@@ -305,12 +619,13 @@
       if (title) title.setAttribute('contenteditable', on ? 'true' : 'false');
       if (on) {
         setTimeout(function () { if (zoomFit) fitZoom(); }, 0);
-        ensureResizeHandles(document);
+        ensureObjectGrips(document);
         ensureObjectControls(document);
         repaintCharts(document);
       refreshFields();
       } else {
         this.clearSelection();
+        this.rig.detach();
         this.toolbar.classList.remove('visible');
         // The filmstrip belongs to the edit shell. Presenting turns editing
         // off, so without this it survived the trip and reappeared over the
@@ -356,6 +671,10 @@
     _onDocPointerDown(e) {
       if (!this.active) return;
       if (isDeckChromeNode(e.target)) return;
+      /* The handles live in the slide now, not in the object, so a press on one
+       * looks from here like a press on empty slide — which used to clear the
+       * selection out from under the gesture about to start. */
+      if (e.target.closest && e.target.closest('.moveable-control-box')) return;
 
       const obj = this._closestObject(e.target);
       const slide = e.target.closest && e.target.closest('section.slide');
@@ -370,22 +689,6 @@
       }
 
       if (obj && !(e.shiftKey || e.ctrlKey || e.metaKey)) {
-        const onResize = e.target.closest('.slide-object-resize');
-        if (onResize) {
-          e.preventDefault();
-          e.stopPropagation();
-          if (!this.selected.has(obj)) this._selectOnly(obj);
-          if (this.selected.size === 1) this._startResize(e, obj);
-          return;
-        }
-
-        if (e.target.closest('.slide-object-rotate')) {
-          e.preventDefault();
-          e.stopPropagation();
-          this._startRotate(e, obj);
-          return;
-        }
-
         const isText = obj.getAttribute('data-object-type') === 'text';
         const onMove = e.target.closest('.slide-object-move');
         const onText = e.target.closest('.slide-object-text');
@@ -402,12 +705,14 @@
           return;
         }
 
+        /* Selecting is all this does. The drag itself belongs to the rig, which
+         * is listening on this object because selecting it attached it — and
+         * which hears the mousedown that follows this pointerdown.
+         *
+         * Nothing here may call preventDefault on the way past: cancelling a
+         * pointerdown suppresses the mouse events that come after it, and those
+         * are what the gesture library listens to. */
         if (!this.selected.has(obj)) this._selectOnly(obj);
-
-        if (onMove || !isText) {
-          e.preventDefault();
-          this._startDrag(e, obj);
-        }
         return;
       }
 
@@ -452,394 +757,6 @@
 
     _slideRect(slide) {
       return slide.getBoundingClientRect();
-    }
-
-    _startDrag(e, primary) {
-      const slide = primary.closest('section.slide');
-      if (!slide) return;
-      const sr = this._slideRect(slide);
-      const moving = Array.from(this.selected).filter((o) => slide.contains(o));
-      if (!moving.length) moving.push(primary);
-
-      /* Sizes measured in the same space as the slide rect. offsetWidth is in
-       * layout pixels and the rect is in on-screen pixels, and the canvas is
-       * zoomed — mixing them made the drag clamp believe a wide object was
-       * wider than the slide, which pinned it to the left edge on every drag,
-       * and quietly put the snap guides in the wrong place too. */
-      const starts = moving.map((o) => {
-        const r = o.getBoundingClientRect();
-        return {
-          el: o,
-          l: this._positionPct(o, slide, 'left'),
-          t: this._positionPct(o, slide, 'top'),
-          w: r.width,
-          h: r.height,
-          wPct: (r.width / sr.width) * 100,
-          hPct: (r.height / sr.height) * 100
-        };
-      });
-
-      this._dragState = {
-        slide,
-        sr,
-        moving: starts,
-        startX: e.clientX,
-        startY: e.clientY,
-        primary: primary
-      };
-      this._clearSnap();
-
-      /* Capture on window, for the reason the rotate handle has: a gesture that
-       * something else swallows, or that leaves the page, still belongs to this
-       * drag. */
-      window.addEventListener('pointermove', this._onDocPointerMove, true);
-      window.addEventListener('pointerup', this._onDocPointerUp, true);
-      window.addEventListener('pointercancel', this._onDocPointerUp, true);
-      try { e.target.setPointerCapture(e.pointerId); } catch (_) {}
-    }
-
-    /* One space for the whole gesture: on-screen pixels, the same space the
-     * pointer and the slide rect are already in. Percent goes in at the end,
-     * once.
-     *
-     * Bento does not do this arithmetic at all — it hands drag, resize and
-     * rotate to Moveable, and writes back the position the library reports. It
-     * can afford a library; a runtime that ships inside every deck cannot. So
-     * the maths is here, but it is done in one unit, because three separate
-     * bugs this week were all the same mistake: mixing layout pixels with
-     * screen pixels, or percent-of-width with percent-of-height.
-     *
-     * offsetLeft/Top/Width/Height are read rather than the bounding rect
-     * because they ignore transforms: a rotated element's rect is the box
-     * AROUND it, which is bigger than the element and would make the first
-     * move jump. */
-    _resizeFrame(obj, slide, sr) {
-      /* The style first, because it is exact: offsetLeft and offsetWidth are
-       * rounded to whole pixels, and starting a gesture from a rounded box
-       * leaves the opposite edge a pixel or two off every time. offset* is the
-       * fallback for an object the document positioned some other way, and it
-       * is transform-independent, which the bounding rect is not. */
-      const k = slide.offsetWidth ? sr.width / slide.offsetWidth : 1;
-      const pl = pct(obj, 'left'), pt = pct(obj, 'top');
-      const pw = pct(obj, 'width'), ph = pct(obj, 'height');
-      return {
-        k,
-        l: pl == null ? obj.offsetLeft * k : (pl / 100) * sr.width,
-        t: pt == null ? obj.offsetTop * k : (pt / 100) * sr.height,
-        w: pw == null ? obj.offsetWidth * k : (pw / 100) * sr.width,
-        h: ph == null ? obj.offsetHeight * k : (ph / 100) * sr.height
-      };
-    }
-
-    _startResize(e, obj) {
-      const slide = obj.closest('section.slide');
-      if (!slide) return;
-      const sr = this._slideRect(slide);
-      const handle = e.target.closest('.slide-object-resize');
-      const dir = (handle && handle.getAttribute('data-resize')) || 'se';
-      const f = this._resizeFrame(obj, slide, sr);
-      this._resizeState = {
-        slide,
-        el: obj,
-        sr,
-        dir,
-        angle: objectAngle(obj),
-        startX: e.clientX,
-        startY: e.clientY,
-        w0: f.w,
-        h0: f.h,
-        cx0: f.l + f.w / 2,
-        cy0: f.t + f.h / 2,
-        beforeW: obj.style.width,
-        beforeH: obj.style.height,
-        beforeL: obj.style.left,
-        beforeT: obj.style.top
-      };
-      window.addEventListener('pointermove', this._onResizeMove, true);
-      window.addEventListener('pointerup', this._onResizeUp, true);
-      window.addEventListener('pointercancel', this._onResizeUp, true);
-      try { e.target.setPointerCapture(e.pointerId); } catch (_) {}
-    }
-
-    _onResizeMove(e) {
-      if (!this._resizeState) return;
-      const st = this._resizeState;
-      const sr = st.sr;
-      const dx = e.clientX - st.startX;
-      const dy = e.clientY - st.startY;
-
-      /* A turned object is dragged in its own frame: pulling the edge that is
-       * currently its right widens it, wherever "right" is pointing. */
-      const a = st.angle * Math.PI / 180;
-      const cos = Math.cos(a), sin = Math.sin(a);
-      const lx = dx * cos + dy * sin;
-      const ly = -dx * sin + dy * cos;
-
-      const minPx = Math.min(sr.width, sr.height) * RESIZE_MIN_FRAC;
-      let w = st.w0, h = st.h0, mx = 0, my = 0;
-
-      if (st.dir.indexOf('e') !== -1) { w = Math.max(minPx, st.w0 + lx); mx = (w - st.w0) / 2; }
-      else if (st.dir.indexOf('w') !== -1) { w = Math.max(minPx, st.w0 - lx); mx = -(w - st.w0) / 2; }
-      if (st.dir.indexOf('s') !== -1) { h = Math.max(minPx, st.h0 + ly); my = (h - st.h0) / 2; }
-      else if (st.dir.indexOf('n') !== -1) { h = Math.max(minPx, st.h0 - ly); my = -(h - st.h0) / 2; }
-
-      /* The centre moves by half of what the edge did, turned back into screen
-       * axes. Both terms are pixels here, which is the whole point: the version
-       * that mixed percent-of-width with percent-of-height drifted on every
-       * drag, because those are different lengths unless the slide is square. */
-      const cx = st.cx0 + (mx * cos - my * sin);
-      const cy = st.cy0 + (mx * sin + my * cos);
-
-      st.el.style.width = (w / sr.width * 100) + '%';
-      st.el.style.height = (h / sr.height * 100) + '%';
-      st.el.style.left = ((cx - w / 2) / sr.width * 100) + '%';
-      st.el.style.top = ((cy - h / 2) / sr.height * 100) + '%';
-    }
-
-    _onResizeUp() {
-      if (!this._resizeState) return;
-      const st = this._resizeState;
-      const el = st.el;
-      const afterW = el.style.width;
-      const afterH = el.style.height;
-      const afterL = el.style.left;
-      const afterT = el.style.top;
-      const beforeW = st.beforeW;
-      const beforeH = st.beforeH;
-      const beforeL = st.beforeL;
-      const beforeT = st.beforeT;
-      const changed = afterW !== beforeW || afterH !== beforeH ||
-        afterL !== beforeL || afterT !== beforeT;
-      if (changed) {
-        /* Pulling a top or left edge moves the object as well as sizing it,
-         * so undo has to put all four back. */
-        this.history.push({
-          undo: () => {
-            el.style.width = beforeW; el.style.height = beforeH;
-            el.style.left = beforeL; el.style.top = beforeT;
-          },
-          redo: () => {
-            el.style.width = afterW; el.style.height = afterH;
-            el.style.left = afterL; el.style.top = afterT;
-          }
-        });
-      }
-      this._resizeState = null;
-      window.removeEventListener('pointermove', this._onResizeMove, true);
-      window.removeEventListener('pointerup', this._onResizeUp, true);
-      window.removeEventListener('pointercancel', this._onResizeUp, true);
-    }
-
-    _startRotate(e, obj) {
-      const slide = obj.closest('section.slide');
-      if (!slide) return;
-      if (!this.selected.has(obj)) this._selectOnly(obj);
-      const r = obj.getBoundingClientRect();
-      this._rotateState = {
-        el: obj,
-        cx: r.left + r.width / 2,
-        cy: r.top + r.height / 2,
-        before: obj.style.transform
-      };
-      /* Capture, so nothing between the handle and the document can swallow the
-       * move. window rather than document because a gesture that leaves the
-       * page still belongs to this drag. */
-      window.addEventListener('pointermove', this._onRotateMove, true);
-      window.addEventListener('pointerup', this._onRotateUp, true);
-      window.addEventListener('pointercancel', this._onRotateUp, true);
-      try { e.target.setPointerCapture(e.pointerId); } catch (_) {}
-    }
-
-    _onRotateMove(e) {
-      const st = this._rotateState;
-      if (!st) return;
-      /* The handle sits above the object, so straight up is zero. */
-      let deg = Math.atan2(e.clientY - st.cy, e.clientX - st.cx) * 180 / Math.PI + 90;
-      /* Shift snaps, the way it does in every drawing tool. Fifteen degrees
-       * because that is where the useful angles are. */
-      if (e.shiftKey) deg = Math.round(deg / 15) * 15;
-      else deg = Math.round(deg);
-      while (deg > 180) deg -= 360;
-      while (deg <= -180) deg += 360;
-      st.el.style.transform = deg === 0 ? '' : 'rotate(' + deg + 'deg)';
-      let tag = document.getElementById('deckAngleTag');
-      if (!tag) {
-        tag = document.createElement('div');
-        tag.id = 'deckAngleTag';
-        tag.className = 'deck-angle-tag';
-        document.body.appendChild(tag);
-      }
-      tag.textContent = deg + '\u00B0';
-      tag.style.left = (e.clientX + 14) + 'px';
-      tag.style.top = (e.clientY - 10) + 'px';
-      tag.classList.add('is-on');
-      const field = document.querySelector('[data-geom="rotate"]');
-      if (field && document.activeElement !== field) field.value = deg;
-    }
-
-    _onRotateUp() {
-      const st = this._rotateState;
-      if (!st) return;
-      const el = st.el;
-      const after = el.style.transform;
-      const before = st.before;
-      if (after !== before) {
-        this.history.push({
-          undo: () => { el.style.transform = before; syncInspector(); },
-          redo: () => { el.style.transform = after; syncInspector(); }
-        });
-        updateUndoRedoChrome();
-      }
-      const tag = document.getElementById('deckAngleTag');
-      if (tag) tag.classList.remove('is-on');
-      syncInspector();
-      this._rotateState = null;
-      window.removeEventListener('pointermove', this._onRotateMove, true);
-      window.removeEventListener('pointerup', this._onRotateUp, true);
-      window.removeEventListener('pointercancel', this._onRotateUp, true);
-    }
-
-    _otherObjects(slide, excludeSet) {
-      return Array.from(slide.querySelectorAll('[data-slide-object]')).filter((o) => !excludeSet.has(o));
-    }
-
-    /* Slide edge snap lines removed — only center guides + other objects (plan A). */
-    _snapLinesForSlide(slide, excludeSet) {
-      const sr = this._slideRect(slide);
-      const linesV = [sr.width / 2];
-      const linesH = [sr.height / 2];
-      this._otherObjects(slide, excludeSet).forEach((o) => {
-        const r = o.getBoundingClientRect();
-        const left = r.left - sr.left;
-        const top = r.top - sr.top;
-        linesV.push(left, left + r.width / 2, left + r.width);
-        linesH.push(top, top + r.height / 2, top + r.height);
-      });
-      return { linesV, linesH, sr };
-    }
-
-    _applySnap(dx, dy, primaryStart, state) {
-      if (prefersReducedMotion()) {
-        return { dx, dy, lv: null, lh: null };
-      }
-      const { slide, moving, sr } = state;
-      const exclude = new Set(moving.map((m) => m.el));
-      const snap = this._snapLinesForSlide(slide, exclude);
-      const pw = primaryStart.w;
-      const ph = primaryStart.h;
-      let pl = (primaryStart.l / 100) * sr.width + dx;
-      let pt = (primaryStart.t / 100) * sr.height + dy;
-
-      let bestVX = null, bestVd = SNAP_PX + 1;
-      snap.linesV.forEach((xv) => {
-        [pl, pl + pw / 2, pl + pw].forEach((edge) => {
-          const d = xv - edge;
-          if (Math.abs(d) < bestVd) { bestVd = Math.abs(d); bestVX = xv - edge; }
-        });
-      });
-      let bestHY = null, bestHd = SNAP_PX + 1;
-      snap.linesH.forEach((yh) => {
-        [pt, pt + ph / 2, pt + ph].forEach((edge) => {
-          const d = yh - edge;
-          if (Math.abs(d) < bestHd) { bestHd = Math.abs(d); bestHY = yh - edge; }
-        });
-      });
-
-      let ndx = dx, ndy = dy;
-      if (bestVX !== null && bestVd <= SNAP_PX) ndx += bestVX;
-      if (bestHY !== null && bestHd <= SNAP_PX) ndy += bestHY;
-
-      let lv = null, lh = null;
-      if (bestVX !== null && bestVd <= SNAP_PX) {
-        const nx = pl + ndx - dx;
-        lv = { pos: nx + pw / 2 };
-      }
-      if (bestHY !== null && bestHd <= SNAP_PX) {
-        const ny = pt + ndy - dy;
-        lh = { pos: ny + ph / 2 };
-      }
-      return { dx: ndx, dy: ndy, lv, lh, sr };
-    }
-
-    _showSnap(lv, lh, sr, slide) {
-      this._clearSnap();
-      const layer = slide.querySelector('.slide-edit-layer');
-      if (!layer) return;
-      if (lv) {
-        const d = document.createElement('div');
-        d.className = 'snap-line-v';
-        d.style.left = (lv.pos / sr.width * 100) + '%';
-        layer.appendChild(d);
-        this._snapEls.push(d);
-      }
-      if (lh) {
-        const d = document.createElement('div');
-        d.className = 'snap-line-h';
-        d.style.top = (lh.pos / sr.height * 100) + '%';
-        layer.appendChild(d);
-        this._snapEls.push(d);
-      }
-    }
-    _clearSnap() {
-      this._snapEls.forEach((e) => e.remove());
-      this._snapEls = [];
-    }
-
-    _onDocPointerMove(e) {
-      if (!this._dragState) return;
-      const st = this._dragState;
-      const sr = st.sr;
-      let dx = e.clientX - st.startX;
-      let dy = e.clientY - st.startY;
-
-      const primaryStart = st.moving.find((m) => m.el === st.primary) || st.moving[0];
-      const snapped = this._applySnap(dx, dy, primaryStart, st);
-      dx = snapped.dx;
-      dy = snapped.dy;
-
-      st.moving.forEach((m) => {
-        let nl = m.l + (dx / sr.width) * 100;
-        let nt = m.t + (dy / sr.height) * 100;
-        /* The centre stays on the slide, not the whole object. Something
-         * bleeding off an edge is ordinary layout — forbidding it was the
-         * stricter rule and the wrong one — while keeping the middle inside
-         * means nothing can be dragged somewhere you cannot reach it again. */
-        nl = Math.max(-m.wPct / 2, Math.min(100 - m.wPct / 2, nl));
-        nt = Math.max(-m.hPct / 2, Math.min(100 - m.hPct / 2, nt));
-        this._setPct(m.el, nl, nt);
-      });
-
-      if (snapped.lv || snapped.lh) this._showSnap(snapped.lv, snapped.lh, sr, st.slide);
-      else this._clearSnap();
-    }
-
-    _onDocPointerUp() {
-      if (!this._dragState) return;
-      const st = this._dragState;
-      const after = st.moving.map((m) => ({
-        el: m.el,
-        l: this._positionPct(m.el, st.slide, 'left'),
-        t: this._positionPct(m.el, st.slide, 'top')
-      }));
-      const before = st.moving.map((m) => ({ el: m.el, l: m.l, t: m.t }));
-
-      const changed = after.some((a, i) => a.l !== before[i].l || a.t !== before[i].t);
-      if (changed) {
-        this.history.push({
-          undo: () => {
-            before.forEach((b) => this._setPct(b.el, b.l, b.t));
-          },
-          redo: () => {
-            after.forEach((a) => this._setPct(a.el, a.l, a.t));
-          }
-        });
-      }
-
-      this._dragState = null;
-      this._clearSnap();
-      window.removeEventListener('pointermove', this._onDocPointerMove, true);
-      window.removeEventListener('pointerup', this._onDocPointerUp, true);
-      window.removeEventListener('pointercancel', this._onDocPointerUp, true);
     }
 
     _syncRteButtons() {
@@ -1166,8 +1083,8 @@
         n.removeAttribute('data-object-type');
         n.classList.remove('is-selected');
       });
-      cl.querySelectorAll('.slide-object-move, .slide-object-resize, .slide-object-rotate')
-        .forEach((n) => n.remove());
+      cl.querySelectorAll('.slide-object-move, .slide-object-resize, .slide-object-rotate, ' +
+        '.moveable-control-box').forEach((n) => n.remove());
       cl.querySelectorAll('[contenteditable]').forEach((n) => n.setAttribute('contenteditable', 'false'));
       const w = slideEl.offsetWidth || window.innerWidth;
       const h = slideEl.offsetHeight || window.innerHeight;
@@ -1302,7 +1219,7 @@
       parent.insertBefore(node, source.nextElementSibling);
       const settle = () => {
         this.deck.refreshSlides();
-        ensureResizeHandles(document);
+        ensureObjectGrips(document);
         ensureObjectControls(document);
         repaintCharts(document);
         refreshFields();
@@ -1345,7 +1262,7 @@
             parent.insertBefore(node, ref);
           } else parent.appendChild(node);
           this.deck.refreshSlides();
-          ensureResizeHandles(document);
+          ensureObjectGrips(document);
           ensureObjectControls(document);
           repaintCharts(document);
       refreshFields();
@@ -1384,6 +1301,9 @@
     // Per-object editing affordances are rebuilt on load by ensureObjectControls,
     // so they never need to be written into a saved or exported file.
     root.querySelectorAll('.slide-object-tablectl, .slide-object-chartctl').forEach((el) => el.remove());
+    /* The handles are drawn into the slide, which makes them part of the
+     * document until this takes them out again. */
+    root.querySelectorAll('.moveable-control-box').forEach((el) => el.remove());
   }
 
   function serializeSlidesRoot(root) {
@@ -1403,7 +1323,14 @@
      * export — hidden by the chrome's own CSS, so nobody noticed, but they
      * travelled in every file anyone was sent. */
     docEl.querySelectorAll('.slide-object-move, .slide-object-resize, .slide-object-rotate, ' +
-      '.slide-object-tablectl, .slide-object-chartctl').forEach((n) => n.remove());
+      '.slide-object-tablectl, .slide-object-chartctl, .moveable-control-box')
+      .forEach((n) => n.remove());
+    /* The gesture library writes its own stylesheet into the head the first
+     * time a handle is drawn. It describes furniture that is no longer in the
+     * file, so it goes with it. */
+    docEl.querySelectorAll('head style').forEach((n) => {
+      if ((n.textContent || '').indexOf('.moveable-control-box') !== -1) n.remove();
+    });
     const filmstrip = docEl.querySelector('#filmstripList');
     if (filmstrip) filmstrip.innerHTML = '';
     ['#editToggle', '#deckEditChrome', '#rteToolbar'].forEach((selector) => {
@@ -1637,7 +1564,7 @@
           if (el) el.innerHTML = entry.html;
         });
       } else return;
-      ensureResizeHandles(document);
+      ensureObjectGrips(document);
       ensureObjectControls(document);
       repaintCharts(document);
       refreshFields();
@@ -1691,7 +1618,7 @@
       ['.progress-bar','.nav-dots','.deck-left-hover-anchor','#deckLeftHover',
        '.slide-sidebar','#slideSidebar','.rte-toolbar','#rteToolbar',
        '.slide-bg-replace-anchor','.slide-object-move','.slide-object-resize','.slide-object-rotate',
-       '.snap-line-v','.snap-line-h'].join(',') + '{display:none!important}',
+       '.moveable-control-box','.snap-line-v','.snap-line-h'].join(',') + '{display:none!important}',
       '.reveal{opacity:1!important;transform:none!important}',
       '.slide-edit-layer{pointer-events:none!important}'
     ].join('\n');
@@ -1778,7 +1705,7 @@
   const editor = new SlideObjectEditor(deck, history);
   const sidebar = new SlideSidebar(deck, history);
 
-  ensureResizeHandles(document);
+  ensureObjectGrips(document);
   ensureObjectControls(document);
   repaintCharts(document);
   refreshFields();
@@ -1992,7 +1919,7 @@
             const node = tpl.content.firstElementChild;
             if (node) layer.appendChild(node);
           });
-          ensureResizeHandles(document);
+          ensureObjectGrips(document);
           ensureObjectControls(document);
           repaintCharts(document);
       refreshFields();
@@ -2058,11 +1985,6 @@
       'left:' + g.left + '%;top:' + g.top + '%;width:' + g.width + '%;height:' + g.height + '%;';
     obj.innerHTML =
       '<button type="button" class="slide-object-move" aria-label="Move">⠿</button>' +
-      RESIZE_DIRS.map(function (d) {
-        return '<button type="button" class="slide-object-resize" data-resize="' + d +
-               '" aria-label="Resize ' + d + '"></button>';
-      }).join('') +
-      '<button type="button" class="slide-object-rotate" aria-label="Rotate"></button>' +
       innerHtml;
     return obj;
   }
@@ -2074,10 +1996,10 @@
     if (!layer) return null;
     const obj = buildObject(kind, innerHtml, geom);
     layer.appendChild(obj);
-    ensureResizeHandles(layer);
+    ensureObjectGrips(layer);
     history.push({
       undo: function () { obj.remove(); },
-      redo: function () { layer.appendChild(obj); ensureResizeHandles(layer); }
+      redo: function () { layer.appendChild(obj); ensureObjectGrips(layer); }
     });
     updateUndoRedoChrome();
     if (editor && typeof editor._selectOnly === 'function') editor._selectOnly(obj);
@@ -4120,7 +4042,7 @@
       if (here && here.parentNode) here.parentNode.insertBefore(copy, here.nextSibling);
       else return false;
       deck.refreshSlides();
-      ensureResizeHandles(copy);
+      ensureObjectGrips(copy);
       ensureObjectControls(copy);
       repaintCharts(copy);
       history.push({
@@ -4151,14 +4073,14 @@
       made.push(copy);
     });
     if (!made.length) return false;
-    ensureResizeHandles(layer);
+    ensureObjectGrips(layer);
     ensureObjectControls(layer);
     repaintCharts(layer);
     editor.clearSelection();
     made.forEach(function (el) { editor._addSel(el); });
     history.push({
       undo: function () { made.forEach(function (el) { el.remove(); }); },
-      redo: function () { made.forEach(function (el) { layer.appendChild(el); }); ensureResizeHandles(layer); }
+      redo: function () { made.forEach(function (el) { layer.appendChild(el); }); ensureObjectGrips(layer); }
     });
     updateUndoRedoChrome();
     return true;
@@ -4665,9 +4587,21 @@
     follow(linkTargetFor(hit));
   }, true);
 
+  /* Re-measure the handles. Cheap, and it is called from anywhere geometry can
+   * change without a gesture: a panel field, an align, an undo. */
+  function rigTouch() {
+    /* Reached from the history stack, which exists before the editor does — so
+     * this can be called during startup, before there is a rig to touch. */
+    try { if (editor && editor.rig) editor.rig.update(); } catch (_) {}
+  }
+
   function syncInspector() {
     const obj = selectedObject();
     const type = obj ? obj.getAttribute('data-object-type') : null;
+
+    /* The handles follow the selection, and this is the one place every change
+     * of selection already comes through. */
+    if (editor && editor.rig) editor.rig.attach(selectedObjects());
 
     const show = function (id, on) {
       const el = document.getElementById(id);
@@ -4945,6 +4879,10 @@
       const v = parseFloat(f.value);
       if (!isNaN(v)) obj.style[k] = v + '%';
     }
+    /* Typing a width here and then grabbing a handle: the gesture starts from
+     * the box the handles were last measured against, so if they still describe
+     * the old size the first pixel of the drag jumps. */
+    rigTouch();
   });
 
   document.addEventListener('click', function (e) {
@@ -5118,7 +5056,7 @@
       copy.style.left = ((pct(obj, 'left') || 0) + 3) + '%';
       copy.style.top = ((pct(obj, 'top') || 0) + 3) + '%';
       parent.appendChild(copy);
-      ensureResizeHandles(parent);
+      ensureObjectGrips(parent);
       ensureObjectControls(parent);
       repaintCharts(parent);
       history.push({ undo: function () { copy.remove(); }, redo: function () { parent.appendChild(copy); } });
@@ -5140,6 +5078,10 @@
     document.body.style.setProperty('--canvas-zoom', String(zoomLevel));
     const label = document.getElementById('deckZoomLevel');
     if (label) label.textContent = zoomFit ? 'Fit' : Math.round(zoomLevel * 100) + '%';
+    /* The handles are drawn inside the slide, so they scale with it unless they
+     * are told the new factor — and their hit areas move with the slide, which
+     * the box only learns by being asked. */
+    if (editor && editor.rig) editor.rig.update();
   }
 
   function fitZoom() {
