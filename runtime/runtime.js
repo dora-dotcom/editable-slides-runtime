@@ -208,15 +208,37 @@
     });
   }
 
+  const RESIZE_DIRS = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+
+  function objectAngle(el) {
+    const m = ((el && el.style.transform) || '').match(/rotate\(\s*(-?[\d.]+)deg/);
+    return m ? parseFloat(m[1]) : 0;
+  }
+
   function ensureResizeHandles(root) {
     const el = root || document;
     el.querySelectorAll('[data-slide-object]').forEach((obj) => {
+      /* Eight, not one. A single corner meant an object could only ever grow
+       * down and to the right — to trim the top of a box you had to move it as
+       * well, and get both right. */
       if (!obj.querySelector('.slide-object-resize')) {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'slide-object-resize';
-        btn.setAttribute('aria-label', 'Resize');
-        obj.appendChild(btn);
+        RESIZE_DIRS.forEach((dir) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'slide-object-resize';
+          btn.setAttribute('data-resize', dir);
+          btn.setAttribute('aria-label', 'Resize ' + dir);
+          obj.appendChild(btn);
+        });
+      }
+      /* Turning something is a thing you do by turning it. The panel's Angle
+       * field stays, for when a number is what you mean. */
+      if (!obj.querySelector('.slide-object-rotate')) {
+        const rot = document.createElement('button');
+        rot.type = 'button';
+        rot.className = 'slide-object-rotate';
+        rot.setAttribute('aria-label', 'Rotate');
+        obj.appendChild(rot);
       }
       // A document arrives with objects but no handles — only ones inserted by
       // the editor carried them, so half a deck could be dragged and half
@@ -262,6 +284,8 @@
       this._onDocPointerUp = this._onDocPointerUp.bind(this);
       this._onResizeMove = this._onResizeMove.bind(this);
       this._onResizeUp = this._onResizeUp.bind(this);
+      this._onRotateMove = this._onRotateMove.bind(this);
+      this._onRotateUp = this._onRotateUp.bind(this);
       this._onSelectionChange = this._onSelectionChange.bind(this);
       this._onFocusIn = this._onFocusIn.bind(this);
     }
@@ -345,6 +369,12 @@
           e.stopPropagation();
           if (!this.selected.has(obj)) this._selectOnly(obj);
           if (this.selected.size === 1) this._startResize(e, obj);
+          return;
+        }
+
+        if (e.target.closest('.slide-object-rotate')) {
+          e.preventDefault();
+          if (this.selected.size === 1) this._startRotate(e, obj);
           return;
         }
 
@@ -451,19 +481,34 @@
       const slide = obj.closest('section.slide');
       if (!slide) return;
       const sr = this._slideRect(slide);
-      const r = obj.getBoundingClientRect();
-      const wPct = this._parsePct(obj, 'width');
-      const hPct = this._parsePct(obj, 'height');
+      const handle = e.target.closest('.slide-object-resize');
+      const dir = (handle && handle.getAttribute('data-resize')) || 'se';
+      /* Measure from the style, not from the box: a rotated element's
+       * bounding rect is the axis-aligned box AROUND it, which is bigger than
+       * the element and would make every drag jump. */
+      /* From the inline style, not the computed one: a positioned element's
+       * computed left is resolved to pixels, so asking for a percentage there
+       * always came back empty and every drag started from zero. */
+      const left = pct(obj, 'left') || 0;
+      const top = pct(obj, 'top') || 0;
+      const wPct = pct(obj, 'width');
+      const hPct = pct(obj, 'height');
       this._resizeState = {
         slide,
         el: obj,
         sr,
+        dir,
+        angle: objectAngle(obj),
         startX: e.clientX,
         startY: e.clientY,
-        startW: r.width,
-        startH: r.height,
+        startW: (wPct == null ? obj.getBoundingClientRect().width / sr.width * 100 : wPct),
+        startH: (hPct == null ? obj.getBoundingClientRect().height / sr.height * 100 : hPct),
+        startL: left,
+        startT: top,
         beforeW: obj.style.width,
         beforeH: obj.style.height,
+        beforeL: obj.style.left,
+        beforeT: obj.style.top,
         hadWidthPct: wPct != null,
         hadHeightPct: hPct != null
       };
@@ -477,13 +522,48 @@
       if (!this._resizeState) return;
       const st = this._resizeState;
       const sr = st.sr;
-      const dx = e.clientX - st.startX;
-      const dy = e.clientY - st.startY;
-      const minPx = Math.min(sr.width, sr.height) * RESIZE_MIN_FRAC;
-      let nw = Math.max(minPx, st.startW + dx);
-      let nh = Math.max(minPx, st.startH + dy);
-      st.el.style.width = (nw / sr.width * 100) + '%';
-      st.el.style.height = (nh / sr.height * 100) + '%';
+      /* Percent throughout, so a resize means the same thing at any zoom and
+       * on any screen. */
+      const dxPct = (e.clientX - st.startX) / sr.width * 100;
+      const dyPct = (e.clientY - st.startY) / sr.height * 100;
+
+      /* A turned object is dragged in its own frame: pulling its right edge
+       * has to widen it, whichever way "right" is currently pointing. */
+      const a = st.angle * Math.PI / 180;
+      const cos = Math.cos(a), sin = Math.sin(a);
+      const lx = dxPct * cos + dyPct * sin;
+      const ly = -dxPct * sin + dyPct * cos;
+
+      const minW = RESIZE_MIN_FRAC * 100;
+      const minH = RESIZE_MIN_FRAC * 100;
+      let w = st.startW, h = st.startH, mx = 0, my = 0;
+
+      if (st.dir.indexOf('e') !== -1) {
+        w = Math.max(minW, st.startW + lx);
+        mx = (w - st.startW) / 2;
+      } else if (st.dir.indexOf('w') !== -1) {
+        w = Math.max(minW, st.startW - lx);
+        mx = -(w - st.startW) / 2;
+      }
+      if (st.dir.indexOf('s') !== -1) {
+        h = Math.max(minH, st.startH + ly);
+        my = (h - st.startH) / 2;
+      } else if (st.dir.indexOf('n') !== -1) {
+        h = Math.max(minH, st.startH - ly);
+        my = -(h - st.startH) / 2;
+      }
+
+      /* The centre moves by half of what the edge did — back in screen axes,
+       * because that is where left and top live. */
+      const cdx = mx * cos - my * sin;
+      const cdy = mx * sin + my * cos;
+      const cx = st.startL + st.startW / 2 + cdx;
+      const cy = st.startT + st.startH / 2 + cdy;
+
+      st.el.style.width = w + '%';
+      st.el.style.height = h + '%';
+      st.el.style.left = (cx - w / 2) + '%';
+      st.el.style.top = (cy - h / 2) + '%';
     }
 
     _onResizeUp() {
@@ -492,18 +572,25 @@
       const el = st.el;
       const afterW = el.style.width;
       const afterH = el.style.height;
+      const afterL = el.style.left;
+      const afterT = el.style.top;
       const beforeW = st.beforeW;
       const beforeH = st.beforeH;
-      const changed = afterW !== beforeW || afterH !== beforeH;
+      const beforeL = st.beforeL;
+      const beforeT = st.beforeT;
+      const changed = afterW !== beforeW || afterH !== beforeH ||
+        afterL !== beforeL || afterT !== beforeT;
       if (changed) {
+        /* Pulling a top or left edge moves the object as well as sizing it,
+         * so undo has to put all four back. */
         this.history.push({
           undo: () => {
-            el.style.width = beforeW;
-            el.style.height = beforeH;
+            el.style.width = beforeW; el.style.height = beforeH;
+            el.style.left = beforeL; el.style.top = beforeT;
           },
           redo: () => {
-            el.style.width = afterW;
-            el.style.height = afterH;
+            el.style.width = afterW; el.style.height = afterH;
+            el.style.left = afterL; el.style.top = afterT;
           }
         });
       }
@@ -511,6 +598,56 @@
       document.removeEventListener('pointermove', this._onResizeMove);
       document.removeEventListener('pointerup', this._onResizeUp);
       document.removeEventListener('pointercancel', this._onResizeUp);
+    }
+
+    _startRotate(e, obj) {
+      const slide = obj.closest('section.slide');
+      if (!slide) return;
+      const r = obj.getBoundingClientRect();
+      this._rotateState = {
+        el: obj,
+        cx: r.left + r.width / 2,
+        cy: r.top + r.height / 2,
+        before: obj.style.transform
+      };
+      document.addEventListener('pointermove', this._onRotateMove);
+      document.addEventListener('pointerup', this._onRotateUp);
+      document.addEventListener('pointercancel', this._onRotateUp);
+      try { e.target.setPointerCapture(e.pointerId); } catch (_) {}
+    }
+
+    _onRotateMove(e) {
+      const st = this._rotateState;
+      if (!st) return;
+      /* The handle sits above the object, so straight up is zero. */
+      let deg = Math.atan2(e.clientY - st.cy, e.clientX - st.cx) * 180 / Math.PI + 90;
+      /* Shift snaps, the way it does in every drawing tool. Fifteen degrees
+       * because that is where the useful angles are. */
+      if (e.shiftKey) deg = Math.round(deg / 15) * 15;
+      else deg = Math.round(deg);
+      while (deg > 180) deg -= 360;
+      while (deg <= -180) deg += 360;
+      st.el.style.transform = deg === 0 ? '' : 'rotate(' + deg + 'deg)';
+      syncInspector();
+    }
+
+    _onRotateUp() {
+      const st = this._rotateState;
+      if (!st) return;
+      const el = st.el;
+      const after = el.style.transform;
+      const before = st.before;
+      if (after !== before) {
+        this.history.push({
+          undo: () => { el.style.transform = before; syncInspector(); },
+          redo: () => { el.style.transform = after; syncInspector(); }
+        });
+        updateUndoRedoChrome();
+      }
+      this._rotateState = null;
+      document.removeEventListener('pointermove', this._onRotateMove);
+      document.removeEventListener('pointerup', this._onRotateUp);
+      document.removeEventListener('pointercancel', this._onRotateUp);
     }
 
     _otherObjects(slide, excludeSet) {
@@ -976,7 +1113,8 @@
         n.removeAttribute('data-object-type');
         n.classList.remove('is-selected');
       });
-      cl.querySelectorAll('.slide-object-move, .slide-object-resize').forEach((n) => n.remove());
+      cl.querySelectorAll('.slide-object-move, .slide-object-resize, .slide-object-rotate')
+        .forEach((n) => n.remove());
       cl.querySelectorAll('[contenteditable]').forEach((n) => n.setAttribute('contenteditable', 'false'));
       const w = slideEl.offsetWidth || window.innerWidth;
       const h = slideEl.offsetHeight || window.innerHeight;
@@ -1208,6 +1346,11 @@
       body.classList.remove('deck-edit-mode', 'slide-anim-paused', 'deck-sidebar-open');
     }
     sanitizeEditableState(docEl);
+    /* The handles are the tool, not the deck. They were never taken out of an
+     * export — hidden by the chrome's own CSS, so nobody noticed, but they
+     * travelled in every file anyone was sent. */
+    docEl.querySelectorAll('.slide-object-move, .slide-object-resize, .slide-object-rotate, ' +
+      '.slide-object-tablectl, .slide-object-chartctl').forEach((n) => n.remove());
     const filmstrip = docEl.querySelector('#filmstripList');
     if (filmstrip) filmstrip.innerHTML = '';
     ['#editToggle', '#deckEditChrome', '#rteToolbar'].forEach((selector) => {
@@ -1494,7 +1637,7 @@
       '.slide:last-child{page-break-after:avoid!important;break-after:avoid!important}',
       ['.progress-bar','.nav-dots','.deck-left-hover-anchor','#deckLeftHover',
        '.slide-sidebar','#slideSidebar','.rte-toolbar','#rteToolbar',
-       '.slide-bg-replace-anchor','.slide-object-move','.slide-object-resize',
+       '.slide-bg-replace-anchor','.slide-object-move','.slide-object-resize','.slide-object-rotate',
        '.snap-line-v','.snap-line-h'].join(',') + '{display:none!important}',
       '.reveal{opacity:1!important;transform:none!important}',
       '.slide-edit-layer{pointer-events:none!important}'
@@ -1862,7 +2005,11 @@
       'left:' + g.left + '%;top:' + g.top + '%;width:' + g.width + '%;height:' + g.height + '%;';
     obj.innerHTML =
       '<button type="button" class="slide-object-move" aria-label="Move">⠿</button>' +
-      '<button type="button" class="slide-object-resize" aria-label="Resize"></button>' +
+      RESIZE_DIRS.map(function (d) {
+        return '<button type="button" class="slide-object-resize" data-resize="' + d +
+               '" aria-label="Resize ' + d + '"></button>';
+      }).join('') +
+      '<button type="button" class="slide-object-rotate" aria-label="Rotate"></button>' +
       innerHtml;
     return obj;
   }

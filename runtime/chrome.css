@@ -217,13 +217,42 @@ body.deck-edit-mode .slide-object { outline-color: color-mix(in srgb, var(--deck
 }
 body.deck-edit-mode .slide-object-move { display: flex; }
 
+/* Eight handles and a stub to turn by. Small, because they sit on top of the
+   work; the accent, because they are the tool speaking. */
 .slide-object-resize {
-  position: absolute; right: -7px; bottom: -7px; width: 14px; height: 14px;
-  border-radius: 3px; background: var(--deck-chrome-accent); cursor: nwse-resize;
-  display: none; z-index: 4; border: 1px solid var(--deck-chrome-border);
+  position: absolute; width: 11px; height: 11px;
+  border-radius: 3px; background: var(--deck-chrome-accent);
+  display: none; z-index: 4; border: 1px solid var(--deck-chrome-surface, #fff);
   padding: 0; box-sizing: border-box;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.18);
 }
+.slide-object-resize[data-resize="nw"] { left: -6px;  top: -6px;    cursor: nwse-resize; }
+.slide-object-resize[data-resize="n"]  { left: 50%;   top: -6px;    margin-left: -5.5px; cursor: ns-resize; }
+.slide-object-resize[data-resize="ne"] { right: -6px; top: -6px;    cursor: nesw-resize; }
+.slide-object-resize[data-resize="e"]  { right: -6px; top: 50%;     margin-top: -5.5px;  cursor: ew-resize; }
+.slide-object-resize[data-resize="se"] { right: -6px; bottom: -6px; cursor: nwse-resize; }
+.slide-object-resize[data-resize="s"]  { left: 50%;   bottom: -6px; margin-left: -5.5px; cursor: ns-resize; }
+.slide-object-resize[data-resize="sw"] { left: -6px;  bottom: -6px; cursor: nesw-resize; }
+.slide-object-resize[data-resize="w"]  { left: -6px;  top: 50%;     margin-top: -5.5px;  cursor: ew-resize; }
 body.deck-edit-mode .slide-object.is-selected .slide-object-resize { display: block; }
+
+/* Round, and held off the top edge on a short stalk, so it never reads as one
+   more thing to drag the corner with. */
+.slide-object-rotate {
+  position: absolute; left: 50%; top: -30px; margin-left: -6px;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--deck-chrome-surface, #fff);
+  border: 2px solid var(--deck-chrome-accent);
+  display: none; z-index: 5; padding: 0; box-sizing: border-box;
+  cursor: grab;
+}
+.slide-object-rotate:active { cursor: grabbing; }
+.slide-object-rotate::before {
+  content: ''; position: absolute; left: 50%; top: 100%;
+  width: 1px; height: 18px; margin-left: -0.5px;
+  background: var(--deck-chrome-accent); opacity: 0.55;
+}
+body.deck-edit-mode .slide-object.is-selected .slide-object-rotate { display: block; }
 
 .slide-object-text {
   min-height: 1.2em; outline: none; font-size: var(--body-size);
