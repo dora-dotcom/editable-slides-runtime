@@ -60,6 +60,9 @@
     <button type="button" class="deck-tool" data-insert="chart" title="Chart">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Chart</span>
     </button>
+    <button type="button" class="deck-tool" data-insert="lever" title="Lever — a number the room can drag">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18"/><circle cx="9" cy="12" r="3"/></svg><span>Lever</span>
+    </button>
   </div>
 
   <div class="deck-left-row deck-bar-trail">
@@ -407,6 +410,49 @@
     </div>
   </section>
 
+  <section class="deck-sect" id="sectLever" hidden>
+    <h4 class="deck-sect-head" data-fold><span class="deck-sect-caret"></span>Lever</h4>
+    <div class="deck-sect-body">
+      <div class="deck-field"><span class="deck-field-label">Name</span>
+        <div class="deck-field-row"><input type="text" data-lever="var" placeholder="R"></div>
+      </div>
+      <p class="deck-field-hint">The name a formula calls it by. Keep it short — <code>R</code>, <code>markup</code>.</p>
+      <div class="deck-field"><span class="deck-field-label">Label</span>
+        <div class="deck-field-row"><input type="text" data-lever="label" placeholder="Users sharing one machine"></div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Range</span>
+        <div class="deck-field-row deck-split3">
+          <input type="number" data-lever="min" placeholder="min" aria-label="Minimum">
+          <input type="number" data-lever="max" placeholder="max" aria-label="Maximum">
+          <input type="number" data-lever="step" placeholder="step" aria-label="Step">
+        </div>
+      </div>
+      <div class="deck-field"><span class="deck-field-label">Value</span>
+        <div class="deck-field-row deck-split2">
+          <input type="number" data-lever="value" aria-label="Value">
+          <input type="text" data-lever="format" placeholder="n / pct0 / +$k" aria-label="Format">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="deck-sect" id="sectCalc" hidden>
+    <h4 class="deck-sect-head" data-fold><span class="deck-sect-caret"></span>Computed number</h4>
+    <div class="deck-sect-body">
+      <div class="deck-field"><span class="deck-field-label">Formula</span>
+        <div class="deck-field-row"><input type="text" data-calc-edit="calc" placeholder="1 / (R * (1 + markup))"></div>
+      </div>
+      <p class="deck-field-hint">Levers on this slide by name, plus <code>+ - * / % ^</code>, comparisons, and <code>min max abs round floor ceil sqrt clamp if</code>. Constants for the whole slide go in <code>data-vars</code> on the section.</p>
+      <div class="deck-field"><span class="deck-field-label">Format</span>
+        <div class="deck-field-row deck-split2">
+          <input type="text" data-calc-edit="format" placeholder="n1 / pct0 / +$k">
+          <button type="button" data-calc-colour-toggle title="Green above zero, red below">Colour by sign</button>
+        </div>
+      </div>
+      <p class="deck-field-hint"><code>n</code> plain, <code>n1</code> one decimal, <code>pct0</code> a percentage, <code>k</code> thousands, <code>$</code> money, <code>+</code> always signed. Combine them: <code>+$k</code> gives +$4.9k.</p>
+    </div>
+  </section>
+
   <section class="deck-sect" id="sectShape" hidden>
     <h4 class="deck-sect-head" data-fold><span class="deck-sect-caret"></span>Fill &amp; stroke</h4>
     <div class="deck-sect-body">
@@ -619,6 +665,7 @@
         <button type="button" role="menuitem" data-field-insert="pages">Number of pages</button>
         <button type="button" role="menuitem" data-field-insert="title">Deck title</button>
         <button type="button" role="menuitem" data-field-insert="date">Today's date</button>
+        <button type="button" role="menuitem" data-calc-insert title="A number worked out from the levers on this slide">Computed number</button>
       </div>
     </div>
   </span>

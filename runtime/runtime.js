@@ -322,8 +322,12 @@
       if (!objs.length) { this.detach(); return; }
       const slide = objs[0].closest('section.slide');
       const same = objs.filter((o) => o.closest('section.slide') === slide);
+      /* Text and levers are both "grab the grip" objects: the words need a
+       * caret and the slider needs the pointer, so dragging the body would take
+       * away the thing the object is for. */
+      const bodyType = same[0].getAttribute('data-object-type');
       const mode = same.length > 1 ? 'group'
-        : same[0].getAttribute('data-object-type') === 'text' ? 'text' : 'solid';
+        : (bodyType === 'text' || bodyType === 'lever') ? 'text' : 'solid';
       const sig = mode + '|' + same.map((o) => o.getAttribute('data-oid') || '?').join(',');
       /* Rebuilding during a gesture would pull the instance out from under the
        * gesture running on it. Selection does not change mid-drag, but the
@@ -630,8 +634,10 @@
         setTimeout(function () { if (zoomFit) fitZoom(); }, 0);
         ensureObjectGrips(document);
         ensureObjectControls(document);
+        ensureLevers(document);
         repaintCharts(document);
       refreshFields();
+      recalcAll();
       } else {
         this.clearSelection();
         this.rig.detach();
@@ -699,6 +705,13 @@
         const on = this.selected.has(obj);
         also.forEach((m) => { if (on) { m.classList.remove('is-selected'); this.selected.delete(m); } else this._addSel(m); });
         if (typeof syncInspector === 'function') syncInspector();
+        return;
+      }
+
+      /* The slider handles its own pointer. Selecting the object is right, but
+       * anything else here would fight the thumb. */
+      if (obj && e.target.closest('.slide-object-lever input[type="range"]')) {
+        if (!this.selected.has(obj)) this._selectOnly(obj);
         return;
       }
 
@@ -1727,8 +1740,13 @@
 
   ensureObjectGrips(document);
   ensureObjectControls(document);
+  ensureLevers(document);
   repaintCharts(document);
   refreshFields();
+  /* Numbers before anything else touches them: a deck that arrives with
+   * formulas should show its own arithmetic, not the values someone happened to
+   * save. */
+  recalcAll();
   editor.bind();
   watchWhichSlide();
 
@@ -2224,6 +2242,283 @@
    * it — which is why this chart had no labels at all. The words are laid over
    * the top as HTML instead, positioned in percent, so they stay upright and
    * take the deck's own font. */
+  /* ---------- A slide that computes ----------
+   *
+   * The consulting pattern: levers you drag and numbers that follow. A margin
+   * table, a breakeven line, a total — all of it arithmetic over a few named
+   * inputs, and the whole point is that you change one in the room and the
+   * table answers.
+   *
+   * Three pieces:
+   *   - a `lever` object, which is a named number with a slider on it;
+   *   - `<span data-calc="…">` anywhere in text, including inside table cells;
+   *   - constants declared on the slide, for the parts of a model nobody drags.
+   *
+   * Formulas are evaluated by the little parser below rather than by `eval` or
+   * `new Function`. Not only for the Content-Security-Policy — though a deck that
+   * needs unsafe-eval is a deck some hosts will refuse — but because a deck is a
+   * file that gets emailed onward, and "the numbers move" must never mean "the
+   * document can run arbitrary code on whoever opens it". The parser knows
+   * numbers, the four operations, comparisons, and a dozen functions. It cannot
+   * reach the DOM, the network, or anything else.
+   */
+  const CALC_FNS = {
+    min: Math.min, max: Math.max, abs: Math.abs, round: Math.round,
+    floor: Math.floor, ceil: Math.ceil, sqrt: Math.sqrt, pow: Math.pow,
+    clamp: function (x, lo, hi) { return Math.min(hi, Math.max(lo, x)); },
+    /* Both branches are evaluated, which is safe because nothing here has an
+     * effect — the worst an unused branch can produce is Infinity. */
+    if: function (c, a, b) { return c ? a : b; }
+  };
+
+  function calcTokens(src) {
+    const out = [];
+    const s2 = String(src);
+    let i = 0;
+    while (i < s2.length) {
+      const c = s2[i];
+      if (c === ' ' || c === '\t' || c === '\n') { i++; continue; }
+      if (/[0-9.]/.test(c)) {
+        let j = i;
+        while (j < s2.length && /[0-9.]/.test(s2[j])) j++;
+        out.push({ t: 'num', v: parseFloat(s2.slice(i, j)) });
+        i = j;
+        continue;
+      }
+      if (/[A-Za-z_]/.test(c)) {
+        let j = i;
+        while (j < s2.length && /[A-Za-z0-9_]/.test(s2[j])) j++;
+        out.push({ t: 'name', v: s2.slice(i, j) });
+        i = j;
+        continue;
+      }
+      const two = s2.slice(i, i + 2);
+      if (two === '<=' || two === '>=' || two === '==' || two === '!=' || two === '&&' || two === '||') {
+        out.push({ t: 'op', v: two });
+        i += 2;
+        continue;
+      }
+      if ('+-*/%^(),<>!'.indexOf(c) !== -1) { out.push({ t: 'op', v: c }); i++; continue; }
+      /* An unknown character makes the whole formula unanswerable rather than
+       * silently something else. */
+      return null;
+    }
+    return out;
+  }
+
+  /* Recursive descent, lowest precedence first. Returns a function of the
+   * variables, so a formula is parsed once and run on every drag. */
+  function calcCompile(src) {
+    const toks = calcTokens(src);
+    if (!toks || !toks.length) return null;
+    let at = 0;
+    const peek = function () { return toks[at]; };
+    const eat = function (v) {
+      const t = toks[at];
+      if (t && t.t === 'op' && t.v === v) { at++; return true; }
+      return false;
+    };
+    let expr;
+    const atom = function () {
+      const t = toks[at];
+      if (!t) return null;
+      if (t.t === 'num') { at++; const v = t.v; return function () { return v; }; }
+      if (t.t === 'op' && (t.v === '-' || t.v === '+' || t.v === '!')) {
+        at++;
+        const inner = atom();
+        if (!inner) return null;
+        if (t.v === '-') return function (v) { return -inner(v); };
+        if (t.v === '!') return function (v) { return inner(v) ? 0 : 1; };
+        return inner;
+      }
+      if (t.t === 'op' && t.v === '(') {
+        at++;
+        const inner = expr();
+        if (!inner || !eat(')')) return null;
+        return inner;
+      }
+      if (t.t === 'name') {
+        at++;
+        const name = t.v;
+        if (peek() && peek().t === 'op' && peek().v === '(') {
+          at++;
+          const args = [];
+          if (!eat(')')) {
+            for (;;) {
+              const a = expr();
+              if (!a) return null;
+              args.push(a);
+              if (eat(',')) continue;
+              if (eat(')')) break;
+              return null;
+            }
+          }
+          const fn = CALC_FNS[name.toLowerCase()];
+          if (!fn) return null;
+          return function (v) { return fn.apply(null, args.map(function (a) { return a(v); })); };
+        }
+        return function (v) {
+          const got = v[name];
+          return typeof got === 'number' ? got : NaN;
+        };
+      }
+      return null;
+    };
+    /* Right-associative, so 2^3^2 is 2^9 the way a calculator means it. */
+    const power = function () {
+      const left = atom();
+      if (!left) return null;
+      if (eat('^')) {
+        const right = power();
+        if (!right) return null;
+        return function (v) { return Math.pow(left(v), right(v)); };
+      }
+      return left;
+    };
+    const binary = function (next, ops) {
+      return function () {
+        let left = next();
+        if (!left) return null;
+        for (;;) {
+          const t = peek();
+          if (!t || t.t !== 'op' || ops.indexOf(t.v) === -1) return left;
+          at++;
+          const right = next();
+          if (!right) return null;
+          left = (function (l, r, op) {
+            return function (v) {
+              const a = l(v), b = r(v);
+              switch (op) {
+                case '+': return a + b;
+                case '-': return a - b;
+                case '*': return a * b;
+                case '/': return a / b;
+                case '%': return a % b;
+                case '<': return a < b ? 1 : 0;
+                case '>': return a > b ? 1 : 0;
+                case '<=': return a <= b ? 1 : 0;
+                case '>=': return a >= b ? 1 : 0;
+                case '==': return a === b ? 1 : 0;
+                case '!=': return a !== b ? 1 : 0;
+                case '&&': return a && b ? 1 : 0;
+                case '||': return a || b ? 1 : 0;
+              }
+              return NaN;
+            };
+          })(left, right, t.v);
+        }
+      };
+    };
+    const mul = binary(power, ['*', '/', '%']);
+    const add = binary(mul, ['+', '-']);
+    const cmp = binary(add, ['<', '>', '<=', '>=', '==', '!=']);
+    const and = binary(cmp, ['&&']);
+    expr = binary(and, ['||']);
+    const fn = expr();
+    if (!fn || at !== toks.length) return null;
+    return fn;
+  }
+
+  const calcCache = Object.create(null);
+  function calcRun(src, vars) {
+    if (!(src in calcCache)) calcCache[src] = calcCompile(src);
+    const fn = calcCache[src];
+    if (!fn) return NaN;
+    try { return fn(vars); } catch (e) { return NaN; }
+  }
+
+  /* The variables in scope on a slide: constants the author declared, then the
+   * levers, which win — a lever is the thing you are allowed to change. */
+  function calcVars(slide) {
+    const vars = Object.create(null);
+    if (!slide) return vars;
+    const declared = slide.getAttribute('data-vars') || '';
+    declared.split(/[,;\n]/).forEach(function (pair) {
+      const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(-?[\d.]+)\s*$/.exec(pair);
+      if (m) vars[m[1]] = parseFloat(m[2]);
+    });
+    slide.querySelectorAll('[data-object-type="lever"][data-var]').forEach(function (lev) {
+      const name = lev.getAttribute('data-var');
+      const v = parseFloat(lev.getAttribute('data-value'));
+      if (name && isFinite(v)) vars[name] = v;
+    });
+    return vars;
+  }
+
+  /* How a number is written. A consulting table is unreadable without this: the
+   * same figure wants to be 50%, +$4.9k and 0.5 in three different places. */
+  function calcFormat(value, spec) {
+    if (!isFinite(value)) return '—';
+    const raw = String(spec || 'n');
+    const signed = raw.indexOf('+') !== -1;
+    const money = raw.indexOf('$') !== -1;
+    const kilo = /k/i.test(raw);
+    const pct = /pct|%/i.test(raw);
+    const dm = /(\d)/.exec(raw.replace(/pct/i, ''));
+    let places = dm ? parseInt(dm[1], 10) : null;
+    let n = value;
+    let suffix = '';
+    if (pct) {
+      n = value * 100;
+      suffix = '%';
+      if (places === null) places = 0;
+    } else if (kilo) {
+      /* Millions once thousands stop helping: 1.2m reads, 1200k does not. */
+      const abs = Math.abs(n);
+      if (abs >= 1e6) { n = n / 1e6; suffix = 'm'; } else { n = n / 1e3; suffix = 'k'; }
+      if (places === null) places = 1;
+    }
+    if (places === null) places = 0;
+    const neg = n < 0;
+    let body = Math.abs(n).toFixed(places);
+    /* Thousands separators, once the number is long enough to need them. */
+    if (!kilo && !pct) body = body.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    let out = (money ? '$' : '') + body + suffix;
+    if (neg) out = '-' + out;
+    else if (signed) out = '+' + out;
+    return out;
+  }
+
+  /* Recompute every number on a slide. Called on a lever drag, when a slide
+   * becomes current, and after anything that could have changed a formula.
+   *
+   * The value goes in as text and the formula stays in the attribute — the same
+   * split as a page number, and for the same reason: a deck opened anywhere,
+   * with or without this runtime, shows the number it was last showing. */
+  function recalc(slide) {
+    if (!slide) return;
+    const vars = calcVars(slide);
+    slide.querySelectorAll('[data-calc]').forEach(function (el) {
+      const src = el.getAttribute('data-calc');
+      if (!src) return;
+      const v = calcRun(src, vars);
+      el.textContent = calcFormat(v, el.getAttribute('data-format'));
+      /* The classes are always kept; whether they mean a colour is the deck's
+       * business, and the stylesheet only paints them when the author asked. */
+      el.classList.toggle('calc-pos', isFinite(v) && v > 0);
+      el.classList.toggle('calc-neg', isFinite(v) && v < 0);
+    });
+    slide.querySelectorAll('[data-object-type="lever"]').forEach(paintLever);
+    /* A chart can be part of the model too: any {formula} inside its data is
+     * evaluated before it is drawn. */
+    slide.querySelectorAll('[data-object-type="chart"][data-chart-data*="{"]').forEach(paintChart);
+  }
+
+  function recalcAll() {
+    (deck.slides || []).forEach(recalc);
+  }
+
+  /* Formulas inside chart data: "Explorer {700*0.1*R}, Regulars {250*0.35*R}". */
+  function calcChartData(obj) {
+    const raw = obj.getAttribute('data-chart-data') || '';
+    if (raw.indexOf('{') === -1) return raw;
+    const vars = calcVars(obj.closest('section.slide'));
+    return raw.replace(/\{([^}]*)\}/g, function (_, expr) {
+      const v = calcRun(expr, vars);
+      return isFinite(v) ? String(Math.round(v * 1000) / 1000) : '0';
+    });
+  }
+
   /* ---------- Chart colour ----------
    *
    * A multi-series chart used to be one colour at falling opacity, which looks
@@ -2664,7 +2959,7 @@
     if (!svg) return;
     if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
     const type = obj.getAttribute('data-chart') || 'bar';
-    const series = parseSeries(obj.getAttribute('data-chart-data'));
+    const series = parseSeries(calcChartData(obj));
     const o = chartOpts(obj);
     svg.innerHTML = renderChart(type, series, o, obj);
     let words = host.querySelector('.chart-words');
@@ -2682,6 +2977,224 @@
       '<svg viewBox="0 0 100 70" preserveAspectRatio="none" width="100%" height="100%" ' +
       'style="display:block;overflow:visible;"></svg></div>';
   }
+
+  /* ---------- The lever ----------
+   *
+   * A named number with a slider on it. The name is what a formula refers to;
+   * everything else is presentation. It is an ordinary slide object, so it drags,
+   * resizes, rotates, groups and exports like the rest — and it stays live in a
+   * reading copy, which is the whole point: you send the calculator, not a
+   * picture of one.
+   */
+  function leverMarkup() {
+    return '<div class="slide-object-lever">' +
+      '<div class="lever-row">' +
+      '<span class="lever-label"></span>' +
+      '<span class="lever-value"></span>' +
+      '</div>' +
+      '<input type="range" class="lever-input" aria-label="Lever">' +
+      '</div>';
+  }
+
+  /* Write the attributes onto the control. Called when a lever is inserted, when
+   * a document is loaded, and after every change — the attributes are the truth
+   * and the DOM is a view of them, so a deck that arrives from anywhere shows
+   * the right thing without the editor having touched it. */
+  function paintLever(obj) {
+    const host = obj.querySelector('.slide-object-lever');
+    if (!host) return;
+    const input = host.querySelector('input[type="range"]');
+    const label = host.querySelector('.lever-label');
+    const out = host.querySelector('.lever-value');
+    const min = parseFloat(obj.getAttribute('data-min'));
+    const max = parseFloat(obj.getAttribute('data-max'));
+    const step = parseFloat(obj.getAttribute('data-step'));
+    const value = parseFloat(obj.getAttribute('data-value'));
+    if (input) {
+      input.min = isFinite(min) ? min : 0;
+      input.max = isFinite(max) ? max : 100;
+      input.step = isFinite(step) && step > 0 ? step : 1;
+      if (isFinite(value)) input.value = value;
+      /* Not editable: a slider inside contenteditable text would take the caret
+       * and the deck would try to store the thumb as a character. */
+      input.setAttribute('contenteditable', 'false');
+    }
+    if (label) label.textContent = obj.getAttribute('data-label') || obj.getAttribute('data-var') || '';
+    if (out) out.textContent = calcFormat(isFinite(value) ? value : 0, obj.getAttribute('data-format'));
+  }
+
+  function ensureLevers(root) {
+    (root || document).querySelectorAll('[data-object-type="lever"]').forEach(function (obj) {
+      if (!obj.querySelector('.slide-object-lever')) {
+        /* A document written by hand or by an agent may carry only the
+         * attributes. The control is a view; build it. */
+        obj.insertAdjacentHTML('beforeend', leverMarkup());
+      }
+      paintLever(obj);
+    });
+  }
+
+  function insertLever() {
+    const obj = insertObject('lever', leverMarkup(), { left: 8, top: 30, width: 36, height: 12 });
+    if (!obj) return null;
+    /* A name nobody has used yet on this slide, so two levers cannot quietly
+     * shadow each other. */
+    const slide = obj.closest('section.slide');
+    const taken = {};
+    if (slide) {
+      slide.querySelectorAll('[data-object-type="lever"][data-var]').forEach(function (l) {
+        taken[l.getAttribute('data-var')] = 1;
+      });
+    }
+    const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
+    let name = 'x';
+    for (let i = 0; i < letters.length; i++) {
+      if (!taken[letters[i]]) { name = letters[i]; break; }
+    }
+    obj.setAttribute('data-var', name);
+    obj.setAttribute('data-label', 'Lever ' + name.toUpperCase());
+    obj.setAttribute('data-min', '0');
+    obj.setAttribute('data-max', '10');
+    obj.setAttribute('data-step', '1');
+    obj.setAttribute('data-value', '1');
+    paintLever(obj);
+    recalc(slide);
+    return obj;
+  }
+
+  /* Dragging the slider. The value is written to the attribute as it moves so
+   * every formula on the slide follows, and one undo entry covers the gesture
+   * rather than one per pixel. */
+  (function () {
+    let holding = null;
+    document.addEventListener('pointerdown', function (e) {
+      const input = e.target.closest && e.target.closest('.slide-object-lever input[type="range"]');
+      if (!input) return;
+      const obj = input.closest('[data-object-type="lever"]');
+      if (obj) holding = { obj: obj, before: obj.getAttribute('data-value') };
+    }, true);
+
+    document.addEventListener('input', function (e) {
+      const input = e.target;
+      if (!input.classList || !input.classList.contains('lever-input')) return;
+      const obj = input.closest('[data-object-type="lever"]');
+      if (!obj) return;
+      obj.setAttribute('data-value', input.value);
+      paintLever(obj);
+      recalc(obj.closest('section.slide'));
+      if (typeof scheduleSave === 'function') scheduleSave();
+      syncInspector();
+    });
+
+    const settle = function () {
+      if (!holding) return;
+      const obj = holding.obj;
+      const before = holding.before;
+      const after = obj.getAttribute('data-value');
+      holding = null;
+      if (before === after) return;
+      const apply = function (v) {
+        if (v === null) obj.removeAttribute('data-value'); else obj.setAttribute('data-value', v);
+        paintLever(obj);
+        recalc(obj.closest('section.slide'));
+        syncInspector();
+      };
+      history.push({ undo: function () { apply(before); }, redo: function () { apply(after); } });
+      updateUndoRedoChrome();
+    };
+    document.addEventListener('pointerup', settle, true);
+    document.addEventListener('pointercancel', settle, true);
+  })();
+
+  /* The panel's own fields for a lever, and the button that puts a computed
+   * number into text. */
+  document.addEventListener('input', function (e) {
+    const f = e.target.closest && e.target.closest('[data-lever]');
+    if (!f) return;
+    const obj = selectedObject();
+    if (!obj || obj.getAttribute('data-object-type') !== 'lever') return;
+    const which = f.getAttribute('data-lever');
+    const attr = 'data-' + which;
+    const before = obj.getAttribute(attr);
+    const after = f.value;
+    if (before === after) return;
+    const apply = function (v) {
+      if (v === null || v === '') obj.removeAttribute(attr); else obj.setAttribute(attr, v);
+      paintLever(obj);
+      recalc(obj.closest('section.slide'));
+    };
+    pushAttr(apply, before, after);
+  });
+
+  document.addEventListener('input', function (e) {
+    const f = e.target.closest && e.target.closest('[data-calc-edit]');
+    if (!f) return;
+    const span = calcSpanFromSelection();
+    if (!span) return;
+    const which = f.getAttribute('data-calc-edit');
+    span.setAttribute(which === 'format' ? 'data-format' : 'data-calc', f.value);
+    recalc(span.closest('section.slide'));
+    if (typeof scheduleSave === 'function') scheduleSave();
+  });
+
+  document.addEventListener('click', function (e) {
+    const b = e.target.closest && e.target.closest('[data-calc-colour-toggle]');
+    if (!b) return;
+    const span = calcSpanFromSelection();
+    if (!span) return;
+    if (span.hasAttribute('data-calc-colour')) span.removeAttribute('data-calc-colour');
+    else span.setAttribute('data-calc-colour', '');
+    syncInspector();
+    if (typeof scheduleSave === 'function') scheduleSave();
+  });
+
+  /* Which computed number the panel is talking about: the one the caret is in,
+   * or the only one in the selected object. */
+  let lastCalcSpan = null;
+  function calcSpanFromSelection() {
+    const sel = document.getSelection();
+    if (sel && sel.rangeCount) {
+      const at = elementAtRangeStart(sel.getRangeAt(0));
+      const hit = at && at.closest && at.closest('[data-calc]');
+      if (hit) { lastCalcSpan = hit; return hit; }
+    }
+    if (lastCalcSpan && document.contains(lastCalcSpan)) return lastCalcSpan;
+    const obj = selectedObject();
+    const one = obj && obj.querySelectorAll('[data-calc]');
+    if (one && one.length === 1) { lastCalcSpan = one[0]; return one[0]; }
+    return null;
+  }
+
+  /* Insert a computed number at the caret, the way a page number is inserted. */
+  function insertCalc() {
+    const sel = window.getSelection();
+    const span = document.createElement('span');
+    span.setAttribute('data-calc', '1');
+    span.setAttribute('data-format', 'n');
+    span.textContent = '1';
+    const textEl = sel && sel.anchorNode && sel.anchorNode.parentElement &&
+      sel.anchorNode.parentElement.closest('.slide-object-text[contenteditable="true"]');
+    if (textEl && sel.rangeCount) {
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(span);
+      range.setStartAfter(span);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } else {
+      const obj = selectedObject();
+      const t = textEl || textEl2(obj);
+      if (!t) return null;
+      t.appendChild(span);
+    }
+    lastCalcSpan = span;
+    recalc(span.closest('section.slide'));
+    syncInspector();
+    if (typeof scheduleSave === 'function') scheduleSave();
+    return span;
+  }
+  function textEl2(obj) { return obj ? obj.querySelector('.slide-object-text') : null; }
 
   function insertChart() {
     const obj = insertObject('chart', chartMarkup());
@@ -3068,6 +3581,9 @@
         playEntrances(slide);
         playCountUps(slide);
       }
+      /* Whether editing or presenting: the numbers on the slide you just reached
+       * are computed from the levers as they stand. */
+      recalc(slide);
       paintSpeaker();
       paintPresentBar();
       // Every goTo passes through here, which is the reliable place to keep
@@ -5373,6 +5889,11 @@
     show('sectShape', type === 'shape');
     show('sectImage', type === 'graphic');
     show('sectMedia', type === 'media');
+    show('sectLever', type === 'lever');
+    /* The formula panel follows the caret rather than the selection: a computed
+     * number lives inside text, often inside one cell of a table. */
+    const calcSpan = calcSpanFromSelection();
+    show('sectCalc', !!calcSpan);
 
     const name = document.getElementById('sectSelectionName');
     if (name) name.textContent = type ? type.charAt(0).toUpperCase() + type.slice(1) : 'Selection';
@@ -5384,6 +5905,23 @@
     if (fx) fx.value = (obj && obj.getAttribute('data-fx-enter')) || '';
     const cu = document.querySelector('[data-fx-countup-toggle]');
     if (cu) cu.classList.toggle('active', !!obj && obj.hasAttribute('data-fx-countup'));
+
+    if (obj && type === 'lever') {
+      [['var', 'data-var'], ['label', 'data-label'], ['min', 'data-min'],
+       ['max', 'data-max'], ['step', 'data-step'], ['value', 'data-value'],
+       ['format', 'data-format']].forEach(function (pair) {
+        const f = document.querySelector('[data-lever="' + pair[0] + '"]');
+        if (f && document.activeElement !== f) f.value = obj.getAttribute(pair[1]) || '';
+      });
+    }
+    if (calcSpan) {
+      const cf = document.querySelector('[data-calc-edit="calc"]');
+      if (cf && document.activeElement !== cf) cf.value = calcSpan.getAttribute('data-calc') || '';
+      const ff = document.querySelector('[data-calc-edit="format"]');
+      if (ff && document.activeElement !== ff) ff.value = calcSpan.getAttribute('data-format') || '';
+      const cb = document.querySelector('[data-calc-colour-toggle]');
+      if (cb) cb.classList.toggle('active', calcSpan.hasAttribute('data-calc-colour'));
+    }
 
     if (obj) {
       ['width', 'height'].forEach(function (k) {
@@ -5952,6 +6490,7 @@
         if (kind === 'text') insertText();
         else if (kind === 'table') insertTable();
         else if (kind === 'chart') insertChart();
+        else if (kind === 'lever') insertLever();
       });
     });
     // Fields and roles sit on the text toolbar: mousedown, not click, so the
@@ -5965,6 +6504,10 @@
         else if (what === 'prev') deck.goTo(deck.current - 1);
         else if (what === 'next') deck.goTo(deck.current + 1);
       });
+    });
+    document.querySelectorAll('[data-calc-insert]').forEach(function (btn) {
+      btn.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      btn.addEventListener('click', function () { if (editor.active) insertCalc(); });
     });
     document.querySelectorAll('[data-field-insert]').forEach(function (btn) {
       btn.addEventListener('mousedown', function (e) {

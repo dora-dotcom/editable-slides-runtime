@@ -294,6 +294,62 @@ body.deck-edit-mode .slide-object.is-selected {
 .slide-object[data-object-type="text"] .slide-object-text { cursor: text; }
 .slide-object-graphic { width: 100%; height: 100%; box-sizing: border-box; }
 
+/* ---------- The lever, and the numbers that follow it ----------
+   A lever is content, not chrome: it stays in an exported file and it stays
+   live, so this styling has to survive the trip and has to be the deck's own
+   colours rather than the editor's. Everything below reads a deck token first
+   and falls back to currentColor, the same contract the charts keep. */
+.slide-object-lever {
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column; gap: 0.35em;
+  justify-content: center;
+  box-sizing: border-box;
+  font-family: var(--font-body, inherit);
+  color: var(--text-primary, currentColor);
+}
+.slide-object-lever .lever-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 0.75em;
+  font-size: var(--body-size, 1rem); line-height: 1.2;
+}
+.slide-object-lever .lever-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--accent, var(--deck-chrome-accent, currentColor));
+}
+/* The track and the thumb are drawn rather than left to the browser, because a
+   platform slider is the one thing on a slide that would look like an operating
+   system instead of like the deck. */
+.slide-object-lever input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 0.5em; margin: 0; padding: 0;
+  border-radius: 999px; border: 0;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  cursor: grab; touch-action: none;
+}
+.slide-object-lever input[type="range"]:active { cursor: grabbing; }
+.slide-object-lever input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 1.1em; height: 1.1em; border-radius: 50%;
+  background: var(--accent, var(--deck-chrome-accent, currentColor));
+  border: 0; cursor: grab;
+}
+.slide-object-lever input[type="range"]::-moz-range-thumb {
+  width: 1.1em; height: 1.1em; border-radius: 50%;
+  background: var(--accent, var(--deck-chrome-accent, currentColor));
+  border: 0; cursor: grab;
+}
+.slide-object-lever input[type="range"]:focus-visible {
+  outline: 2px solid var(--accent, var(--deck-chrome-accent, currentColor));
+  outline-offset: 3px;
+}
+
+/* A computed number is ordinary text until the author asks for the sign to
+   speak. Then above zero and below zero get their own colour — overridable,
+   because "good" is green in some decks and not in others. */
+[data-calc] { font-variant-numeric: tabular-nums; }
+[data-calc][data-calc-colour].calc-pos { color: var(--calc-up, #15803d); }
+[data-calc][data-calc-colour].calc-neg { color: var(--calc-down, #b91c1c); }
+
 .snap-line-v, .snap-line-h {
   /* A fixed hue on purpose: a guide has to read as the tool rather than as the
      deck, and has to stay visible whatever the deck's own colours are. It is
@@ -1092,6 +1148,9 @@ body:not(.deck-has-view) .edit-toggle { display: none !important; }
 /* Four arrange buttons wrapped 3 + 1 and read as a heap. Two labelled pairs,
    each splitting the panel evenly. */
 .deck-split2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+/* Min, max and step are three of the same thing and belong on one line. */
+.deck-split3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
+.deck-inspector .deck-split3 input { width: 100%; min-width: 0; }
 .deck-inspector .deck-split2 button { width: 100%; padding: 0 6px; }
 
 /* Handles sit outside the panels: inside, the panel's own scrolling clipped

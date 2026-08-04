@@ -80,6 +80,7 @@ that arrived carrying handles from an older version has them taken out on load.
 | `table` | `.slide-object-table > table`, cells are `.slide-object-text[contenteditable]` | `table-layout:fixed`, or one filled cell claims the row |
 | `chart` | `.slide-object-chart > svg`, plus `data-chart="bar\|line\|pie\|scatter"` and `data-chart-data="Q1 12, Q2 18"` | Drawn by the runtime from the data attribute; no charting library. See the chart attributes below |
 | `media` | `.slide-object-media > video\|audio`, plus `data-media="video\|audio"` | Embedded as a data URI to keep the deck one file. A clip embeds at roughly 4/3 its size, so the editor warns above 8 MB — embed short, link long |
+| `lever` | `.slide-object-lever` holding a label, a readout and an `<input type="range">` | A named number the room can drag. See "Slides that compute" below |
 
 You rarely need to write these by hand — the editor inserts them. Write them
 only when generating a deck programmatically.
@@ -124,6 +125,81 @@ Bars grow from zero rather than from the bottom of the box, so a negative number
 dips below the line. Series get distinct colours — the accent, a cool
 counterpart, and a light and deep tint of each — because three opacities of one
 colour is not a legend anybody can read.
+
+### Slides that compute
+
+The consulting pattern: levers you drag and numbers that follow. A margin table,
+a breakeven line, a total — arithmetic over a few named inputs, where the point
+is that you change one in the room and the table answers.
+
+**A lever** is an object of type `lever`:
+
+```html
+<div class="slide-object" data-slide-object data-oid="s4-lever-r"
+     data-object-type="lever"
+     data-var="R" data-label="Users sharing one machine (R)"
+     data-min="1" data-max="8" data-step="1" data-value="1" data-format="n"
+     style="left:6%;top:18%;width:40%;height:9%;">
+</div>
+```
+
+`data-var` is the name a formula calls it by; the control itself is built by the
+runtime from the attributes, so the markup above is all a generated deck needs.
+
+**A computed number** is a span in any text, including inside a table cell:
+
+```html
+Breakeven utilisation = <span data-calc="1 / (R * (1 + markup))" data-format="pct0">50%</span>
+```
+
+The formula lives in the attribute and the last value in the text — the same
+split as a page number, and for the same reason: a deck opened anywhere, with or
+without this runtime, shows the number it was last showing.
+
+**Constants** — the parts of a model nobody drags — go on the slide:
+
+```html
+<section class="slide" data-vars="machine=50, tokens=0.25, explorers=700">
+```
+
+Levers win over constants of the same name, because a lever is the thing you are
+allowed to change.
+
+**Formulas** know numbers, the variables in scope, `+ - * / % ^`, parentheses,
+comparisons (`< > <= >= == != && ||`, giving 1 or 0), and
+`min max abs round floor ceil sqrt pow clamp if`. They are evaluated by a parser
+in the runtime, never by `eval` or `new Function` — a deck is a file that gets
+forwarded, and "the numbers move" must not mean "this document can run code on
+whoever opens it". A formula that does not parse, or names a variable that is not
+in scope, shows `—`.
+
+**Formats** are a short spec in `data-format`, on a lever or a computed number:
+
+| Spec | 4900 becomes | Notes |
+|---|---|---|
+| `n` | `4,900` | Thousands separated |
+| `n1` | `4,900.0` | The digit is the decimal places |
+| `k` | `4.9k` | Millions past a million: `1.3m` |
+| `$k` | `$4.9k` | |
+| `+$k` | `+$4.9k` | `+` always shows the sign; negatives always do |
+| `pct0` | — | Multiplies by 100: `0.5` → `50%` |
+
+Add `data-calc-colour` to a computed number and it takes `--calc-up` above zero
+and `--calc-down` below, so a margin table reads at a glance. Both default to a
+green and a red that hold up on light and dark, and both are overridable —
+"good" is green in some decks and not in others.
+
+**A chart can be part of the model too.** Any `{formula}` inside
+`data-chart-data` is evaluated before the chart is drawn:
+
+```html
+data-chart-data="Explorer {explorers * ex * machine * (markup - 1) / R}, Operator {operators * op * machine * (markup - 1) / R}"
+```
+
+Everything recomputes when a lever moves, when a slide becomes current, and when
+a deck loads. **Including while presenting, and including in a reading copy** —
+which is the point of the whole thing: you send the calculator, not a picture of
+one.
 
 ### Motion
 
