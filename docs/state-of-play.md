@@ -17,6 +17,14 @@ be read first.
 
 Regression at the end of it: **1948 assertions across six decks, none failing.**
 
+**The suite now lives in this repo.** It used to sit in a Claude scratchpad under
+`/private/tmp` driven by two shell runners, which meant the project's quality
+guarantee was real but unreproducible — nobody but the session that wrote it
+could run it. `tests/run.py` replaces both runners: 40 suites against 3 built
+fixtures, **2208 assertions, none failing**, about three minutes at `--jobs 6`.
+The count is higher than 1948 because the old runners ran a selective matrix and
+this one runs everything against everything. See `tests/README.md`.
+
 ## Half built
 
 **The general binding layer** — the read half is in and shipped, the write half
@@ -30,16 +38,10 @@ that makes a stranger's code run. Declared, not programmed.
 
 ## Next, in the order I would do them
 
-1. **Move the test suite into this repo.** It is the highest-value work here and
-   it is not a feature. Roughly 1950 assertions across 21 suites currently live
-   in a scratchpad under `/private/tmp`, driven by two shell runners. They are
-   ephemeral, and nobody but the session that wrote them can run them — which
-   means the project's quality guarantee is, today, unreproducible. `tests/` plus
-   one `run.py` that builds the fixtures, injects each suite and reports counts.
-2. **The write half of the binding layer** — events, the editor's click rule, a
+1. **The write half of the binding layer** — events, the editor's click rule, a
    reset control. About half the work of the read half. Once it lands, a module
    a skill generated is interactive without a line of JavaScript.
-3. **ShareHTML Phase B** — the runtime in ShareHTML's save path, plus
+2. **ShareHTML Phase B** — the runtime in ShareHTML's save path, plus
    `data-deck-host-chrome`. Same thread as adapting Liyang's slides skill: what
    makes a deck from *his* generator editable in ShareHTML is this layer.
 
@@ -54,6 +56,10 @@ that makes a stranger's code run. Declared, not programmed.
 ## How to verify anything
 
 ```bash
+# the suites — 40 of them, against three unrelated designs
+python3 tests/run.py
+python3 tests/run.py b17 --deck nt      # one suite, one fixture
+
 # a deck already on an older runtime picks up the current one
 python3 scripts/refresh_runtime.py --file ~/Desktop/runtime-deck.html
 python3 scripts/refresh_runtime.py --file '~/Downloads/*.html'   # globs, skips decks that are not ours
@@ -66,4 +72,6 @@ Suites are driven by headless Chrome with `--virtual-time-budget` and read back
 through `--dump-dom`. Two things that have bitten repeatedly and will again:
 a modal freezes the renderer, so every suite stubs `alert`/`confirm`/`prompt`;
 and real async work (a Blob read, a stream) outruns the virtual clock, which is
-why the library is inflated synchronously.
+why the library is inflated synchronously. A third, found while moving the suite
+in: a fresh `--user-data-dir` hangs Chrome indefinitely under a virtual-time
+budget, so `run.py` passes no profile at all. `tests/README.md` has the detail.

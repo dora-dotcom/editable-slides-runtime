@@ -17,3 +17,7 @@ node_modules/
 .tmp/
 .audit-cache/
 *.bak
+
+# Decks the suites build. A deck carries its runtime inlined, so a committed
+# one is a snapshot of an old runtime — tests/fixtures/ holds the sources.
+tests/build/

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en" data-deck-id="no-tokens">
+<head><meta charset="utf-8"><title>No tokens at all</title>
+<!-- fixture-invariant: no-custom-properties -->
+<style>
+/* Deliberately zero custom properties, and a design nothing like the presets.
+   This fixture is the one that keeps CONTRACT.md honest: a table, chart or
+   shape inserted here has no token to read and must fall back to currentColor
+   and still land looking native. Do not add a `--anything` to this file. */
+body{margin:0;background:#0b0b0f;color:#e8e4d9;font-family:"Courier New",monospace}
+section.slide{position:relative;width:100vw;height:100vh;overflow:hidden;
+  background:linear-gradient(135deg,#0b0b0f 0%,#1b1430 100%)}
+.slide-edit-layer{position:absolute;inset:0}
+h1{font-size:72px;margin:0;letter-spacing:-2px;color:#f5d200}
+</style></head>
+<body>
+<section class="slide" id="s0"><div class="slide-edit-layer">
+  <div class="slide-object" data-slide-object data-oid="s0-h" data-object-type="text" data-fx-enter="fade-up" data-fx-order="1" style="left:7%;top:22%;width:70%;">
+    <div class="slide-object-text" contenteditable="true"><h1>No tokens</h1></div></div>
+  <div class="slide-object" data-slide-object data-oid="s0-page" data-object-type="text" style="left:88%;top:90%;width:8%;height:5%;">
+    <div class="slide-object-text" contenteditable="true"><span data-field="page">1</span> / <span data-field="pages">1</span></div></div>
+</div></section>
+<section class="slide" id="s1"><div class="slide-edit-layer">
+  <div class="slide-object" data-slide-object data-oid="s1-page" data-object-type="text" style="left:88%;top:90%;width:8%;height:5%;">
+    <div class="slide-object-text" contenteditable="true"><span data-field="page">2</span> / <span data-field="pages">2</span></div></div>
+</div></section>
+</body></html>
